@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ticket Resale Analytics</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#f8f7f4;--card:#fff;--text:#1a1a1a;--muted:#6b6b6b;--hint:#999;--border:#e5e3de;--accent:#3266ad;--green:#1D9E75;--red:#E24B4A;--purple:#7F77DD;--amber:#BA7517;--teal:#5DCAA5;--pink:#D4537E;--coral:#D85A30;--blue-light:#85B7EB;--surface:#f1efe8}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--card:#262626;--text:#e8e8e6;--muted:#999;--hint:#666;--border:#3a3a3a;--surface:#2c2c2c}}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
+.container{max-width:900px;margin:0 auto;padding:24px 20px}
+h1{font-size:24px;font-weight:600;margin-bottom:4px}
+.subtitle{color:var(--muted);font-size:14px;margin-bottom:24px}
+.drop-zone{border:2px dashed var(--border);border-radius:16px;padding:60px 40px;text-align:center;cursor:pointer;transition:all 0.2s;background:var(--card);margin-bottom:24px}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 5%, var(--card))}
+.drop-zone h2{font-size:18px;font-weight:500;margin-bottom:8px}
+.drop-zone p{color:var(--muted);font-size:14px}
+.drop-zone input{display:none}
+.drop-icon{font-size:40px;margin-bottom:12px;opacity:0.4}
+.loading{text-align:center;padding:40px;color:var(--muted);font-size:15px}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+#dashboard{display:none}
+.mode-badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;margin-left:8px;vertical-align:middle}
+.mode-sales{background:#1D9E7522;color:var(--green)}.mode-inventory{background:#7F77DD22;color:var(--purple)}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+@media(max-width:700px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--surface);border-radius:10px;padding:14px 16px}
+.kpi-label{font-size:12px;color:var(--muted);margin-bottom:3px}
+.kpi-val{font-size:22px;font-weight:600}
+.kpi-sub{font-size:11px;color:var(--hint);margin-top:2px}
+.kpi-pos{color:var(--green)}.kpi-neg{color:var(--red)}.kpi-purple{color:var(--purple)}
+.section{font-size:16px;font-weight:600;margin:28px 0 10px;display:flex;align-items:center;gap:8px}
+.section-badge{font-size:11px;font-weight:500;background:var(--surface);color:var(--muted);padding:2px 10px;border-radius:20px}
+.chart-wrap{position:relative;width:100%;margin-bottom:24px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
+.chart-inner{position:relative}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:8px;font-size:12px;color:var(--muted)}
+.leg-dot{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:middle}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.bar-name{font-size:13px;width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
+.bar-track{flex:1;height:24px;background:var(--surface);border-radius:6px;overflow:hidden}
+.bar-fill{height:100%;border-radius:6px;display:flex;align-items:center;padding-left:8px;font-size:11px;font-weight:600;color:#fff;min-width:fit-content}
+.bar-val{font-size:12px;color:var(--muted);width:80px;text-align:right;flex-shrink:0}
+.bar-roi{font-size:10px;color:var(--hint)}
+.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+@media(max-width:700px){.insight-grid{grid-template-columns:1fr}}
+.insight{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.insight-title{font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px}
+.insight-val{font-size:16px;font-weight:600;margin-bottom:2px}
+.insight-desc{font-size:12px;color:var(--muted);line-height:1.5}
+.table-wrap{overflow-x:auto;margin-bottom:20px}
+table.data{width:100%;border-collapse:collapse;font-size:13px;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+table.data th{background:var(--surface);text-align:left;padding:10px 12px;font-weight:600;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.3px}
+table.data td{padding:8px 12px;border-top:1px solid var(--border)}
+table.data tr:hover td{background:var(--surface)}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.footer{text-align:center;color:var(--hint);font-size:12px;margin-top:40px;padding:20px 0;border-top:1px solid var(--border)}
+.new-file-btn{display:inline-block;margin-top:20px;padding:10px 24px;border-radius:8px;background:var(--accent);color:#fff;border:none;font-size:14px;cursor:pointer;font-family:inherit;font-weight:500}
+.new-file-btn:hover{opacity:0.9}
+.loss-list{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:20px}
+.loss-item{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
+.loss-item:last-child{border-bottom:none}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.status-active{background:var(--green)}.status-ready{background:var(--amber)}
+.timeline-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;align-items:center}
+.timeline-item:last-child{border-bottom:none}
+.timeline-date{color:var(--muted);width:90px;flex-shrink:0;font-size:12px}
+.timeline-event{flex:1;font-weight:500}
+.timeline-meta{color:var(--muted);text-align:right;font-size:12px;width:120px;flex-shrink:0}
+.artist-select-wrap{position:relative;margin-bottom:20px}
+.artist-search{width:100%;padding:12px 16px;border:2px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border-color 0.2s}
+.artist-search:focus{border-color:var(--accent)}
+.artist-dropdown{position:absolute;top:100%;left:0;right:0;max-height:280px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-top:4px;z-index:100;display:none;box-shadow:0 8px 24px rgba(0,0,0,0.12)}
+.artist-dropdown.open{display:block}
+.artist-opt{padding:10px 16px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;transition:background 0.1s}
+.artist-opt:hover{background:var(--surface)}
+.artist-opt-name{font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.artist-opt-meta{font-size:11px;color:var(--muted);margin-left:12px;white-space:nowrap}
+.artist-detail{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px;display:none}
+.artist-detail.visible{display:block}
+.artist-detail-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px}
+.artist-detail-header h3{font-size:18px;font-weight:600}
+.artist-close{background:var(--surface);border:none;color:var(--text);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit}
+.artist-close:hover{background:var(--border)}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Ticket Resale Analytics</h1>
+  <p class="subtitle">Drop your sales export or inventory file for a full analytics breakdown.</p>
+  <div class="drop-zone" id="dropZone">
+    <div class="drop-icon">&#128200;</div>
+    <h2>Drop your .xlsx or .csv file here</h2>
+    <p>Sales exports and inventory files auto-detected</p>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+  </div>
+  <div class="loading" id="loading" style="display:none">
+    <div class="spinner"></div>
+    <p>Crunching the numbers...</p>
+  </div>
+  <div id="dashboard"></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const dz = $('#dropZone');
+const fi = $('#fileInput');
+dz.addEventListener('click', () => fi.click());
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+fi.addEventListener('change', e => { if(e.target.files[0]) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+  if(!file) return;
+  dz.style.display = 'none';
+  $('#loading').style.display = 'block';
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws);
+      const cols = Object.keys(rows[0] || {});
+      const isInventory = cols.includes('Status') && cols.includes('Stock Type') && cols.includes('List') && !cols.includes('Total Profit');
+      setTimeout(() => isInventory ? analyzeInventory(rows, file.name) : analyzeSales(rows, file.name), 100);
+    } catch(err) {
+      alert('Error reading file: ' + err.message);
+      dz.style.display = 'block';
+      $('#loading').style.display = 'none';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function fmtK(v) { return (v < 0 ? '-' : '') + '$' + Math.round(Math.abs(v)/1000).toLocaleString() + 'K'; }
+function fmt$(v) { return (v < 0 ? '-' : '') + '$' + Math.abs(Math.round(v)).toLocaleString(); }
+function groupBy(arr, keyFn) { const m = {}; arr.forEach(r => { const k = keyFn(r); if(!m[k]) m[k] = []; m[k].push(r); }); return m; }
+function parseDate(v) {
+  if(v instanceof Date) return v;
+  if(typeof v === 'number') { const d = new Date((v - 25569) * 86400000); return isNaN(d) ? null : d; }
+  if(typeof v === 'string') { const d = new Date(v); return isNaN(d) ? null : d; }
+  return null;
+}
+function renderDashboard(html) {
+  $('#loading').style.display = 'none';
+  const db = $('#dashboard');
+  db.style.display = 'block';
+  db.innerHTML = html;
+}
+function isDark() { return window.matchMedia('(prefers-color-scheme: dark)').matches; }
+function chartColors() { const dk = isDark(); return { grid: dk ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', text: dk ? '#ccc' : '#666' }; }
+function baseOpts() { const c = chartColors(); return { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{ticks:{color:c.text,font:{size:10}},grid:{display:false}},y:{ticks:{color:c.text,callback:fmtK},grid:{color:c.grid}}} }; }
+const barColors = ['#3266ad','#378ADD','#5DCAA5','#1D9E75','#7F77DD','#534AB7','#D85A30','#BA7517','#D4537E','#639922','#3266ad','#378ADD','#5DCAA5','#1D9E75','#7F77DD'];
+
+function analyzeInventory(rows, fileName) {
+  rows.forEach(r => {
+    r._qty = Number(r['Quantity']) || 0;
+    r._cost = Number(r['Total Cost']) || 0;
+    r._list = Number(r['List']) || 0;
+    r._face = Number(r['Face']) || 0;
+    r._listTotal = r._list * r._qty;
+    r._eventDate = parseDate(r['Event Date']);
+    r._status = (r['Status'] || '').toUpperCase();
+  });
+  const active = rows.filter(r => r._status === 'ACTIVE');
+  const ready = rows.filter(r => r._status === 'READY');
+  const totalQty = rows.reduce((s,r) => s + r._qty, 0);
+  const totalCost = rows.reduce((s,r) => s + r._cost, 0);
+  const totalListVal = rows.reduce((s,r) => s + r._listTotal, 0);
+  const potentialProfit = totalListVal - totalCost;
+  const potentialROI = totalCost > 0 ? potentialProfit / totalCost * 100 : 0;
+  const avgCostPerTicket = totalQty > 0 ? totalCost / totalQty : 0;
+  const avgListPerTicket = totalQty > 0 ? totalListVal / totalQty : 0;
+  const uniqueEvents = new Set(rows.map(r => r['Event Name'])).size;
+  const uniqueVenues = new Set(rows.map(r => r['Venue'])).size;
+  const uniqueCities = new Set(rows.map(r => r['City'])).size;
+  const listings = rows.length;
+
+  const eventGroups = groupBy(rows, r => r['Event Name'] || 'Unknown');
+  const events = Object.entries(eventGroups).map(([name, g]) => ({
+    name, qty: g.reduce((s,r)=>s+r._qty,0), cost: g.reduce((s,r)=>s+r._cost,0),
+    listVal: g.reduce((s,r)=>s+r._listTotal,0), listings: g.length
+  }));
+  events.forEach(e => { e.potProfit = e.listVal - e.cost; e.roi = e.cost > 0 ? e.potProfit/e.cost*100 : 0; });
+
+  const topByCost = [...events].sort((a,b) => b.cost - a.cost).slice(0, 15);
+  const topByProfit = [...events].sort((a,b) => b.potProfit - a.potProfit).slice(0, 15);
+  const riskyEvents = events.filter(e => e.potProfit < 0).sort((a,b) => a.potProfit - b.potProfit);
+
+  const cityGroups = groupBy(rows, r => r['City'] || 'Unknown');
+  const cities = Object.entries(cityGroups).map(([name, g]) => ({
+    name, qty: g.reduce((s,r)=>s+r._qty,0), cost: g.reduce((s,r)=>s+r._cost,0), listVal: g.reduce((s,r)=>s+r._listTotal,0)
+  })).sort((a,b) => b.qty - a.qty).slice(0, 12);
+
+  const venueGroups = groupBy(rows, r => r['Venue'] || 'Unknown');
+  const venues = Object.entries(venueGroups).map(([name, g]) => ({
+    name, qty: g.reduce((s,r)=>s+r._qty,0), cost: g.reduce((s,r)=>s+r._cost,0), listVal: g.reduce((s,r)=>s+r._listTotal,0), listings: g.length
+  })).sort((a,b) => b.cost - a.cost).slice(0, 10);
+
+  const stockGroups = groupBy(rows, r => r['Stock Type'] || 'Unknown');
+  const stockTypes = Object.entries(stockGroups).map(([name, g]) => ({
+    name, qty: g.reduce((s,r)=>s+r._qty,0), listings: g.length
+  })).sort((a,b) => b.qty - a.qty);
+
+  const seatGroups = groupBy(rows, r => r['Seat Type'] || 'Unknown');
+  const seatTypes = Object.entries(seatGroups).map(([name, g]) => ({
+    name, qty: g.reduce((s,r)=>s+r._qty,0), listings: g.length
+  })).sort((a,b) => b.qty - a.qty);
+
+  const stateGroups = groupBy(rows, r => r['State'] || 'Unknown');
+  const states = Object.entries(stateGroups).map(([name, g]) => ({
+    name, qty: g.reduce((s,r)=>s+r._qty,0), cost: g.reduce((s,r)=>s+r._cost,0)
+  })).sort((a,b) => b.qty - a.qty).slice(0, 12);
+
+  const upcoming = rows.filter(r => r._eventDate).sort((a,b) => a._eventDate - b._eventDate).slice(0, 15);
+
+  const costBins = [[0,100],[100,250],[250,500],[500,1000],[1000,2000],[2000,Infinity]];
+  const costBinLabels = ['<$100','$100-250','$250-500','$500-1K','$1K-2K','$2K+'];
+  const costDist = costBins.map(([lo,hi]) => rows.filter(r => r._cost >= lo && r._cost < hi).length);
+
+  const listBins = [[0,100],[100,250],[250,500],[500,1000],[1000,2500],[2500,Infinity]];
+  const listBinLabels = ['<$100','$100-250','$250-500','$500-1K','$1K-2.5K','$2.5K+'];
+  const listDist = listBins.map(([lo,hi]) => rows.filter(r => r._list >= lo && r._list < hi).length);
+
+  const biggestEvent = topByCost[0] || {name:'N/A',cost:0};
+  const bestROIEvent = events.filter(e=>e.cost>200).sort((a,b)=>b.roi-a.roi)[0] || {name:'N/A',roi:0};
+
+  let html = '';
+  html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px;">
+    <div><h2 style="font-size:20px;font-weight:600;">Inventory Dashboard <span class="mode-badge mode-inventory">INVENTORY</span></h2>
+    <p style="font-size:13px;color:var(--muted);">${fileName} &middot; ${listings} listings &middot; ${uniqueEvents} events</p></div>
+    <button class="new-file-btn" onclick="location.reload()">Analyze another file</button></div>`;
+
+  html += `<div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Total tickets</div><div class="kpi-val">${totalQty.toLocaleString()}</div><div class="kpi-sub">${listings} listings &middot; ${uniqueEvents} events</div></div>
+    <div class="kpi"><div class="kpi-label">Total cost basis</div><div class="kpi-val">${fmt$(totalCost)}</div><div class="kpi-sub">Avg ${fmt$(avgCostPerTicket)} / ticket</div></div>
+    <div class="kpi"><div class="kpi-label">Total list value</div><div class="kpi-val kpi-purple">${fmt$(totalListVal)}</div><div class="kpi-sub">Avg ${fmt$(avgListPerTicket)} / ticket</div></div>
+    <div class="kpi"><div class="kpi-label">Potential profit</div><div class="kpi-val ${potentialProfit>=0?'kpi-pos':'kpi-neg'}">${fmt$(potentialProfit)}</div><div class="kpi-sub">${potentialROI.toFixed(1)}% potential ROI</div></div>
+  </div>`;
+
+  html += `<div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Active listings</div><div class="kpi-val">${active.length}</div><div class="kpi-sub">${active.reduce((s,r)=>s+r._qty,0)} tickets</div></div>
+    <div class="kpi"><div class="kpi-label">Ready listings</div><div class="kpi-val">${ready.length}</div><div class="kpi-sub">${ready.reduce((s,r)=>s+r._qty,0)} tickets</div></div>
+    <div class="kpi"><div class="kpi-label">Venues</div><div class="kpi-val">${uniqueVenues}</div><div class="kpi-sub">${uniqueCities} cities</div></div>
+    <div class="kpi"><div class="kpi-label">Biggest position</div><div class="kpi-val" style="font-size:16px;">${biggestEvent.name.length > 18 ? biggestEvent.name.slice(0,18)+'...' : biggestEvent.name}</div><div class="kpi-sub">${fmt$(biggestEvent.cost)} invested</div></div>
+  </div>`;
+
+  html += `<div class="section">Key insights</div>`;
+  html += `<div class="insight-grid">
+    <div class="insight"><div class="insight-title">Capital at risk</div><div class="insight-val">${fmt$(totalCost)}</div><div class="insight-desc">Across ${uniqueEvents} events at ${uniqueVenues} venues. If everything sells at list, you net ${fmt$(potentialProfit)}.</div></div>
+    <div class="insight"><div class="insight-title">Best potential ROI</div><div class="insight-val pos">${bestROIEvent.name}</div><div class="insight-desc">${bestROIEvent.roi.toFixed(0)}% ROI if sold at list price</div></div>
+    ${riskyEvents.length > 0 ? `<div class="insight"><div class="insight-title">Underwater listings</div><div class="insight-val neg">${riskyEvents.length} events</div><div class="insight-desc">Listed below cost. Total exposure: ${fmt$(Math.abs(riskyEvents.reduce((s,e)=>s+e.potProfit,0)))}</div></div>` : `<div class="insight"><div class="insight-title">Risk check</div><div class="insight-val pos">All clear</div><div class="insight-desc">Every event is listed above cost basis</div></div>`}
+    <div class="insight"><div class="insight-title">Avg markup</div><div class="insight-val">${avgCostPerTicket > 0 ? ((avgListPerTicket/avgCostPerTicket - 1)*100).toFixed(0) : 0}%</div><div class="insight-desc">List price vs. cost per ticket (${fmt$(avgCostPerTicket)} cost &rarr; ${fmt$(avgListPerTicket)} list)</div></div>
+  </div>`;
+
+  html += `<div class="section">Cost by event <span class="section-badge">Top 15</span></div>`;
+  html += `<div class="chart-wrap"><div class="legend">
+    <span><span class="leg-dot" style="background:var(--accent);"></span>Cost</span>
+    <span><span class="leg-dot" style="background:var(--purple);"></span>List value</span>
+  </div><div class="chart-inner" style="height:${Math.max(topByCost.length*32+60,250)}px;"><canvas id="chEvCost"></canvas></div></div>`;
+
+  html += `<div class="section">Potential profit by event <span class="section-badge">Top 15</span></div>`;
+  html += `<div class="chart-wrap">`;
+  const maxPP = topByProfit[0]?.potProfit || 1;
+  topByProfit.forEach((ev, i) => {
+    const pctW = Math.max(Math.round(Math.abs(ev.potProfit) / Math.max(maxPP,1) * 100), 2);
+    const color = ev.potProfit >= 0 ? barColors[i % barColors.length] : '#E24B4A';
+    html += `<div class="bar-row"><span class="bar-name" title="${ev.name}">${ev.name}</span><div class="bar-track"><div class="bar-fill" style="width:${pctW}%;background:${color};">${pctW>25?fmt$(ev.potProfit):''}</div></div><span class="bar-val">${fmt$(ev.potProfit)} <span class="bar-roi">${ev.roi.toFixed(0)}%</span></span></div>`;
+  });
+  html += `</div>`;
+
+  if(riskyEvents.length > 0) {
+    html += `<div class="section">Underwater events <span class="section-badge" style="color:var(--red);">Below cost</span></div>`;
+    html += `<div class="loss-list">`;
+    riskyEvents.forEach(ev => {
+      html += `<div class="loss-item"><span>${ev.name} (${ev.qty} tix)</span><span class="neg">${fmt$(ev.potProfit)}</span></div>`;
+    });
+    html += `</div>`;
+  }
+
+  html += `<div class="section">Tickets by city <span class="section-badge">Top 12</span></div>`;
+  html += `<div class="chart-wrap"><div class="chart-inner" style="height:280px;"><canvas id="chCity"></canvas></div></div>`;
+
+  html += `<div class="section">Tickets by state <span class="section-badge">Top 12</span></div>`;
+  html += `<div class="chart-wrap"><div class="chart-inner" style="height:260px;"><canvas id="chState"></canvas></div></div>`;
+
+  html += `<div class="section">Top venues</div>`;
+  html += `<div class="table-wrap"><table class="data"><thead><tr><th>Venue</th><th>Tickets</th><th>Cost</th><th>List value</th><th>Pot. profit</th></tr></thead><tbody>`;
+  venues.forEach(v => {
+    const pp = v.listVal - v.cost;
+    html += `<tr><td>${v.name}</td><td>${v.qty}</td><td>${fmt$(v.cost)}</td><td>${fmt$(v.listVal)}</td><td class="${pp>=0?'pos':'neg'}">${fmt$(pp)}</td></tr>`;
+  });
+  html += `</tbody></table></div>`;
+
+  html += `<div class="section">Stock type breakdown</div>`;
+  html += `<div class="chart-wrap"><div class="chart-inner" style="height:220px;"><canvas id="chStock"></canvas></div></div>`;
+
+  html += `<div class="section">Cost distribution per listing</div>`;
+  html += `<div class="chart-wrap"><div class="chart-inner" style="height:220px;"><canvas id="chCostDist"></canvas></div></div>`;
+
+  html += `<div class="section">List price distribution per ticket</div>`;
+  html += `<div class="chart-wrap"><div class="chart-inner" style="height:220px;"><canvas id="chListDist"></canvas></div></div>`;
+
+  html += `<div class="section">Upcoming events timeline <span class="section-badge">Next 15</span></div>`;
+  html += `<div class="chart-wrap">`;
+  upcoming.forEach(r => {
+    const d = r._eventDate;
+    const dateStr = d ? d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '?';
+    html += `<div class="timeline-item"><span class="timeline-date">${dateStr}</span><span class="timeline-event">${r['Event Name']||'?'}</span><span class="timeline-meta">${r._qty} tix &middot; ${fmt$(r._list)}/ea</span></div>`;
+  });
+  html += `</div>`;
+
+  html += `<div class="section">Full inventory table</div>`;
+  html += `<div class="table-wrap"><table class="data"><thead><tr><th>Event</th><th>Venue</th><th>City</th><th>Qty</th><th>Section</th><th>Cost</th><th>List/ea</th><th>Status</th></tr></thead><tbody>`;
+  rows.sort((a,b)=>(a._eventDate||0)-(b._eventDate||0)).forEach(r => {
+    const sc = r._status === 'ACTIVE' ? 'status-active' : 'status-ready';
+    html += `<tr><td>${r['Event Name']||''}</td><td>${r['Venue']||''}</td><td>${r['City']||''}</td><td>${r._qty}</td><td>${r['Section']||''}</td><td>${fmt$(r._cost)}</td><td>${fmt$(r._list)}</td><td><span class="status-dot ${sc}"></span>${r._status}</td></tr>`;
+  });
+  html += `</tbody></table></div>`;
+
+  html += `<div class="footer">Ticket Resale Analytics &middot; Inventory Mode &middot; ${listings} listings &middot; ${new Date().toLocaleDateString()}</div>`;
+  renderDashboard(html);
+
+  const dk = isDark();
+  const c = chartColors();
+  const b = baseOpts();
+
+  new Chart($('#chEvCost'), {
+    type:'bar',
+    data:{labels:topByCost.map(e=>e.name.length>25?e.name.slice(0,25)+'...':e.name),datasets:[
+      {label:'Cost',data:topByCost.map(e=>e.cost),backgroundColor:dk?'#378ADD':'#3266ad'},
+      {label:'List Value',data:topByCost.map(e=>e.listVal),backgroundColor:dk?'#AFA9EC':'#7F77DD'}
+    ]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt$(Math.round(ctx.raw))}}},scales:{x:{ticks:{color:c.text,callback:fmtK},grid:{color:c.grid}},y:{ticks:{color:c.text,font:{size:10}},grid:{display:false}}}}
+  });
+
+  new Chart($('#chCity'), {
+    type:'bar',
+    data:{labels:cities.map(c=>c.name),datasets:[{data:cities.map(c=>c.qty),backgroundColor:dk?'#AFA9EC':'#7F77DD'}]},
+    options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,maxRotation:45}},y:{...b.scales.y,ticks:{...b.scales.y.ticks,callback:v=>v}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' tickets'}}}}
+  });
+
+  new Chart($('#chState'), {
+    type:'bar',
+    data:{labels:states.map(s=>s.name),datasets:[{data:states.map(s=>s.qty),backgroundColor:dk?'#5DCAA5':'#1D9E75'}]},
+    options:{...b,scales:{...b.scales,y:{...b.scales.y,ticks:{...b.scales.y.ticks,callback:v=>v}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' tickets'}}}}
+  });
+
+  const stockLabels = stockTypes.map(s=>s.name.replace(/_/g,' '));
+  const stockData = stockTypes.map(s=>s.qty);
+  new Chart($('#chStock'), {
+    type:'doughnut',
+    data:{labels:stockLabels,datasets:[{data:stockData,backgroundColor:['#3266ad','#7F77DD','#1D9E75','#BA7517','#D85A30']}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{color:c.text,font:{size:12}}},tooltip:{callbacks:{label:ctx=>ctx.label+': '+ctx.raw+' tickets'}}}}
+  });
+
+  new Chart($('#chCostDist'), {
+    type:'bar',
+    data:{labels:costBinLabels,datasets:[{data:costDist,backgroundColor:dk?'#378ADD':'#3266ad'}]},
+    options:{...b,scales:{...b.scales,y:{...b.scales.y,ticks:{...b.scales.y.ticks,callback:v=>v}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' listings'}}}}
+  });
+
+  new Chart($('#chListDist'), {
+    type:'bar',
+    data:{labels:listBinLabels,datasets:[{data:listDist,backgroundColor:dk?'#AFA9EC':'#7F77DD'}]},
+    options:{...b,scales:{...b.scales,y:{...b.scales.y,ticks:{...b.scales.y.ticks,callback:v=>v}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' listings'}}}}
+  });
+}
+
+function analyzeSales(rows, fileName) {
+  rows.forEach(r => {
+    r._invoiceDate = parseDate(r['Invoice Date']);
+    r._eventDate = parseDate(r['Event Date']);
+    r._qty = Number(r['Qty']) || 0;
+    r._totalCost = Number(r['Total Cost']) || 0;
+    r._totalSale = Number(r['Total Sale']) || 0;
+    r._totalProfit = Number(r['Total Profit']) || 0;
+    r._avgTicket = Number(r['AvgTicket']) || 0;
+    r._margin = Number(r['Margin']) || 0;
+    r._costPer = Number(r['CostPer']) || 0;
+    r._listPrice = Number(r['List Price']) || 0;
+    r._fulfillment = (r['Fulfillment'] || 'Unknown').toUpperCase();
+  });
+  rows = rows.filter(r => r._invoiceDate);
+  rows.sort((a,b) => a._invoiceDate - b._invoiceDate);
+
+  const totalRevenue = rows.reduce((s,r) => s + r._totalSale, 0);
+  const totalCost = rows.reduce((s,r) => s + r._totalCost, 0);
+  const totalProfit = rows.reduce((s,r) => s + r._totalProfit, 0);
+  const totalTickets = rows.reduce((s,r) => s + r._qty, 0);
+  const totalTxns = rows.length;
+  const wins = rows.filter(r => r._totalProfit > 0).length;
+  const losses = rows.filter(r => r._totalProfit < 0).length;
+  const breakEvens = rows.filter(r => r._totalProfit === 0).length;
+  const winRate = wins / totalTxns;
+  const avgProfit = totalProfit / totalTxns;
+  const profits = rows.map(r => r._totalProfit).sort((a,b) => a - b);
+  const medianProfit = profits[Math.floor(profits.length/2)];
+  const bestSale = rows.reduce((b,r) => r._totalProfit > b._totalProfit ? r : b, rows[0]);
+  const worstSale = rows.reduce((w,r) => r._totalProfit < w._totalProfit ? r : w, rows[0]);
+  const roi = totalCost > 0 ? totalProfit / totalCost * 100 : 0;
+  const uniqueEvents = new Set(rows.map(r => r['Event Name'])).size;
+  const uniqueVenues = new Set(rows.map(r => r['Venue'])).size;
+  const uniqueCities = new Set(rows.map(r => r['City'])).size;
+
+  // Loss metrics
+  const totalLosses = rows.filter(r => r._totalProfit < 0).reduce((s,r) => s + r._totalProfit, 0);
+  const lossCount = losses;
+  const avgLoss = lossCount > 0 ? totalLosses / lossCount : 0;
+  const biggestLoss = worstSale._totalProfit;
+  const totalWins = rows.filter(r => r._totalProfit > 0).reduce((s,r) => s + r._totalProfit, 0);
+  const avgWin = wins > 0 ? totalWins / wins : 0;
+  const lossRate = lossCount / totalTxns * 100;
+  // Win/loss streaks
+  let curStreak = 0, maxWinStreak = 0, maxLossStreak = 0, curType = '';
+  rows.forEach(r => {
+    const t = r._totalProfit > 0 ? 'W' : r._totalProfit < 0 ? 'L' : 'B';
+    if(t === curType) { curStreak++; } else { curStreak = 1; curType = t; }
+    if(t === 'W' && curStreak > maxWinStreak) maxWinStreak = curStreak;
+    if(t === 'L' && curStreak > maxLossStreak) maxLossStreak = curStreak;
+  });
+  // Quantity metrics
+  const avgQtyPerSale = totalTickets / totalTxns;
+  const qtys = rows.map(r => r._qty).sort((a,b) => a - b);
+  const medianQty = qtys[Math.floor(qtys.length/2)];
+  const maxQtySale = rows.reduce((b,r) => r._qty > b._qty ? r : b, rows[0]);
+  const revenuePerTicket = totalTickets > 0 ? totalRevenue / totalTickets : 0;
+  const profitPerTicket = totalTickets > 0 ? totalProfit / totalTickets : 0;
+  const costPerTicket = totalTickets > 0 ? totalCost / totalTickets : 0;
+  const qtyBins = [[1,1],[2,2],[3,3],[4,4],[5,6],[7,10],[11,Infinity]];
+  const qtyBinLabels = ['1','2','3','4','5-6','7-10','11+'];
+  const qtyDist = qtyBins.map(([lo,hi]) => rows.filter(r => r._qty >= lo && r._qty <= hi).length);
+  const qtyProfitBySize = qtyBins.map(([lo,hi]) => { const g = rows.filter(r => r._qty >= lo && r._qty <= hi); return g.length > 0 ? g.reduce((s,r)=>s+r._totalProfit,0)/g.length : 0; });
+
+  const monthKey = r => { const d = r._invoiceDate; return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); };
+  const monthGroups = groupBy(rows, monthKey);
+  const monthLabels = Object.keys(monthGroups).sort();
+  let cumProfit = 0;
+  const monthly = monthLabels.map(m => {
+    const g = monthGroups[m]; const rev = g.reduce((s,r)=>s+r._totalSale,0); const prof = g.reduce((s,r)=>s+r._totalProfit,0);
+    const cost = g.reduce((s,r)=>s+r._totalCost,0); const tix = g.reduce((s,r)=>s+r._qty,0); cumProfit += prof;
+    return { month:m, revenue:rev, profit:prof, cost, tickets:tix, txns:g.length, cumProfit, roi: cost>0?prof/cost*100:0, avgQty: tix/g.length };
+  });
+
+  const qKey = r => { const d = r._invoiceDate; return 'Q'+(Math.floor(d.getMonth()/3)+1)+' '+String(d.getFullYear()).slice(2); };
+  const qGroups = groupBy(rows, qKey);
+  const qLabels = [...new Set(rows.map(qKey))];
+  const quarterly = qLabels.map(q => { const g = qGroups[q]; return { q, revenue:g.reduce((s,r)=>s+r._totalSale,0), profit:g.reduce((s,r)=>s+r._totalProfit,0), tickets:g.reduce((s,r)=>s+r._qty,0) }; });
+
+  const eventGroups = groupBy(rows, r => r['Event Name'] || 'Unknown');
+  const events = Object.entries(eventGroups).map(([name, g]) => ({
+    name, profit:g.reduce((s,r)=>s+r._totalProfit,0), revenue:g.reduce((s,r)=>s+r._totalSale,0), cost:g.reduce((s,r)=>s+r._totalCost,0), tickets:g.reduce((s,r)=>s+r._qty,0), txns:g.length
+  }));
+  events.sort((a,b) => b.profit - a.profit);
+  const topEvents = events.slice(0, 15);
+  const worstEvents = events.filter(e => e.profit < 0).sort((a,b) => a.profit - b.profit).slice(0, 10);
+  const topByQty = [...events].sort((a,b) => b.tickets - a.tickets).slice(0, 15);
+
+  const platGroups = groupBy(rows, r => r['Customer'] || 'Unknown');
+  const platforms = Object.entries(platGroups).map(([name, g]) => ({
+    name, profit:g.reduce((s,r)=>s+r._totalProfit,0), revenue:g.reduce((s,r)=>s+r._totalSale,0), txns:g.length,
+    tickets:g.reduce((s,r)=>s+r._qty,0), avgQty:g.reduce((s,r)=>s+r._qty,0)/g.length,
+    winRate: g.filter(r=>r._totalProfit>0).length/g.length*100
+  })).sort((a,b) => b.profit - a.profit);
+
+  // Loss by platform
+  const lossByPlatform = Object.entries(platGroups).map(([name, g]) => {
+    const ls = g.filter(r => r._totalProfit < 0);
+    return { name, lossCount: ls.length, totalLoss: ls.reduce((s,r)=>s+r._totalProfit,0), txns: g.length };
+  }).filter(p => p.lossCount > 0).sort((a,b) => a.totalLoss - b.totalLoss);
+
+  const cityGroups = groupBy(rows, r => r['City'] || 'Unknown');
+  const cities = Object.entries(cityGroups).map(([name, g]) => ({ name, profit:g.reduce((s,r)=>s+r._totalProfit,0), tickets:g.reduce((s,r)=>s+r._qty,0), txns:g.length })).sort((a,b) => b.profit - a.profit).slice(0, 12);
+
+  const venueGroups = groupBy(rows, r => r['Venue'] || 'Unknown');
+  const venues = Object.entries(venueGroups).map(([name, g]) => ({ name, profit:g.reduce((s,r)=>s+r._totalProfit,0), tickets:g.reduce((s,r)=>s+r._qty,0), txns:g.length })).sort((a,b) => b.profit - a.profit).slice(0, 10);
+
+  const stateGroups = groupBy(rows, r => r['State'] || 'Unknown');
+  const states = Object.entries(stateGroups).map(([name, g]) => ({
+    name, profit:g.reduce((s,r)=>s+r._totalProfit,0), tickets:g.reduce((s,r)=>s+r._qty,0), txns:g.length, revenue:g.reduce((s,r)=>s+r._totalSale,0)
+  })).sort((a,b) => b.profit - a.profit).slice(0, 15);
+
+  const dowShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const dowGroups = groupBy(rows, r => r._invoiceDate.getDay());
+  const dow = [1,2,3,4,5,6,0].map(d => ({ name:dowShort[d], profit:(dowGroups[d]||[]).reduce((s,r)=>s+r._totalProfit,0), txns:(dowGroups[d]||[]).length, tickets:(dowGroups[d]||[]).reduce((s,r)=>s+r._qty,0) }));
+
+  const bins = [[-Infinity,-500],[-500,-200],[-200,-100],[-100,-50],[-50,0],[0,50],[50,100],[100,200],[200,500],[500,1000],[1000,Infinity]];
+  const binLabels = ['<-500','-500~-200','-200~-100','-100~-50','-50~0','0~50','50~100','100~200','200~500','500~1K','1K+'];
+  const dist = bins.map(([lo,hi]) => rows.filter(r => r._totalProfit >= lo && r._totalProfit < hi).length);
+
+  // Margin distribution
+  const marginBins = [[-Infinity,-0.5],[-0.5,-0.2],[-0.2,0],[0,0.2],[0.2,0.5],[0.5,1],[1,2],[2,Infinity]];
+  const marginLabels = ['<-50%','-50~-20%','-20~0%','0~20%','20~50%','50~100%','100~200%','200%+'];
+  const marginDist = marginBins.map(([lo,hi]) => rows.filter(r => r._margin >= lo && r._margin < hi).length);
+
+  // Fulfillment breakdown
+  const fulfGroups = groupBy(rows, r => r._fulfillment);
+  const fulfillments = Object.entries(fulfGroups).map(([name, g]) => ({
+    name: name.charAt(0)+name.slice(1).toLowerCase(), count:g.length, tickets:g.reduce((s,r)=>s+r._qty,0), profit:g.reduce((s,r)=>s+r._totalProfit,0)
+  })).sort((a,b) => b.count - a.count);
+
+  const firstDate = rows[0]._invoiceDate; const lastDate = rows[rows.length-1]._invoiceDate;
+  const dateRange = firstDate.toLocaleDateString('en-US',{month:'short',year:'numeric'}) + ' - ' + lastDate.toLocaleDateString('en-US',{month:'short',year:'numeric'});
+  const bestMonth = monthly.reduce((b,m) => m.profit > b.profit ? m : b, monthly[0]);
+  const worstMonth = monthly.reduce((w,m) => m.profit < w.profit ? m : w, monthly[0]);
+  const bestDow = dow.reduce((b,d) => d.profit > b.profit ? d : b, dow[0]);
+
+  let html = '';
+  html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px;">
+    <div><h2 style="font-size:20px;font-weight:600;">Sales Dashboard <span class="mode-badge mode-sales">SALES</span></h2>
+    <p style="font-size:13px;color:var(--muted);">${fileName} &middot; ${dateRange} &middot; ${totalTxns.toLocaleString()} transactions</p></div>
+    <button class="new-file-btn" onclick="location.reload()">Analyze another file</button></div>`;
+
+  // Row 1: Revenue, Profit, Win Rate, Best Sale
+  html += `<div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Total revenue</div><div class="kpi-val">${fmt$(totalRevenue)}</div><div class="kpi-sub">${totalTickets.toLocaleString()} tickets sold</div></div>
+    <div class="kpi"><div class="kpi-label">Total profit</div><div class="kpi-val kpi-pos">${fmt$(totalProfit)}</div><div class="kpi-sub">${roi.toFixed(1)}% ROI</div></div>
+    <div class="kpi"><div class="kpi-label">Win rate</div><div class="kpi-val">${(winRate*100).toFixed(1)}%</div><div class="kpi-sub">${wins} W / ${losses} L / ${breakEvens} BE</div></div>
+    <div class="kpi"><div class="kpi-label">Best single sale</div><div class="kpi-val kpi-pos">${fmt$(bestSale._totalProfit)}</div><div class="kpi-sub">${(bestSale['Event Name']||'').slice(0,30)}</div></div>
+  </div>`;
+
+  // Row 2: Avg profit, Avg ticket, Cost, Worst sale
+  html += `<div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Avg profit / sale</div><div class="kpi-val">${fmt$(avgProfit)}</div><div class="kpi-sub">Median: ${fmt$(medianProfit)}</div></div>
+    <div class="kpi"><div class="kpi-label">Avg ticket price</div><div class="kpi-val">${fmt$(rows.reduce((s,r)=>s+r._avgTicket,0)/totalTxns)}</div><div class="kpi-sub">${uniqueEvents} events</div></div>
+    <div class="kpi"><div class="kpi-label">Cost basis</div><div class="kpi-val">${fmt$(totalCost)}</div><div class="kpi-sub">${uniqueVenues} venues &middot; ${uniqueCities} cities</div></div>
+    <div class="kpi"><div class="kpi-label">Worst single sale</div><div class="kpi-val kpi-neg">${fmt$(worstSale._totalProfit)}</div><div class="kpi-sub">${(worstSale['Event Name']||'').slice(0,30)}</div></div>
+  </div>`;
+
+  // Row 3: Quantity-focused KPIs
+  html += `<div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Avg qty / sale</div><div class="kpi-val">${avgQtyPerSale.toFixed(1)}</div><div class="kpi-sub">Median: ${medianQty} &middot; Max: ${maxQtySale._qty}</div></div>
+    <div class="kpi"><div class="kpi-label">Revenue / ticket</div><div class="kpi-val">${fmt$(revenuePerTicket)}</div><div class="kpi-sub">Cost: ${fmt$(costPerTicket)} / ticket</div></div>
+    <div class="kpi"><div class="kpi-label">Profit / ticket</div><div class="kpi-val kpi-pos">${fmt$(profitPerTicket)}</div><div class="kpi-sub">${(profitPerTicket/revenuePerTicket*100).toFixed(1)}% margin per ticket</div></div>
+    <div class="kpi"><div class="kpi-label">Biggest single batch</div><div class="kpi-val">${maxQtySale._qty} tickets</div><div class="kpi-sub">${(maxQtySale['Event Name']||'').slice(0,30)}</div></div>
+  </div>`;
+
+  // Row 4: Loss-focused KPIs
+  html += `<div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Total losses</div><div class="kpi-val kpi-neg">${fmt$(totalLosses)}</div><div class="kpi-sub">${lossCount} losing sales (${lossRate.toFixed(1)}%)</div></div>
+    <div class="kpi"><div class="kpi-label">Biggest single loss</div><div class="kpi-val kpi-neg">${fmt$(biggestLoss)}</div><div class="kpi-sub">${(worstSale['Event Name']||'').slice(0,30)}</div></div>
+    <div class="kpi"><div class="kpi-label">Avg loss per L</div><div class="kpi-val kpi-neg">${fmt$(avgLoss)}</div><div class="kpi-sub">Avg win: ${fmt$(avgWin)}</div></div>
+    <div class="kpi"><div class="kpi-label">Streaks</div><div class="kpi-val">${maxWinStreak}W / ${maxLossStreak}L</div><div class="kpi-sub">Longest win & loss streaks</div></div>
+  </div>`;
+
+  html += `<div class="section">Key insights</div>`;
+  html += `<div class="insight-grid">
+    <div class="insight"><div class="insight-title">Best month</div><div class="insight-val pos">${bestMonth.month}</div><div class="insight-desc">${fmt$(bestMonth.profit)} profit (${bestMonth.roi.toFixed(0)}% ROI) &middot; ${bestMonth.tickets} tickets</div></div>
+    <div class="insight"><div class="insight-title">Worst month</div><div class="insight-val neg">${worstMonth.month}</div><div class="insight-desc">${fmt$(worstMonth.profit)} profit &middot; ${worstMonth.tickets} tickets</div></div>
+    <div class="insight"><div class="insight-title">Best selling day</div><div class="insight-val">${bestDow.name}</div><div class="insight-desc">${fmt$(bestDow.profit)} from ${bestDow.txns} sales (${bestDow.tickets} tickets)</div></div>
+    <div class="insight"><div class="insight-title">Top ROI event</div><div class="insight-val pos">${(() => { const e = events.filter(e=>e.cost>500).sort((a,b)=>(b.profit/b.cost)-(a.profit/a.cost))[0]; return e ? (e.name.length>28?e.name.slice(0,28)+'...':e.name) : 'N/A'; })()}</div><div class="insight-desc">${(() => { const e = events.filter(e=>e.cost>500).sort((a,b)=>(b.profit/b.cost)-(a.profit/a.cost))[0]; return e ? (e.profit/e.cost*100).toFixed(0)+'% ROI &middot; '+e.tickets+' tickets' : ''; })()}</div></div>
+    <div class="insight"><div class="insight-title">Most sold event</div><div class="insight-val">${(topByQty[0]?.name||'N/A').length>28?(topByQty[0]?.name||'N/A').slice(0,28)+'...':topByQty[0]?.name||'N/A'}</div><div class="insight-desc">${topByQty[0]?.tickets||0} tickets across ${topByQty[0]?.txns||0} sales &middot; ${fmt$(topByQty[0]?.profit||0)} profit</div></div>
+    <div class="insight"><div class="insight-title">Worst loss event</div><div class="insight-val neg">${(worstEvents[0]?.name||'None').length>28?(worstEvents[0]?.name||'None').slice(0,28)+'...':worstEvents[0]?.name||'None'}</div><div class="insight-desc">${worstEvents[0] ? fmt$(worstEvents[0].profit)+' lost across '+worstEvents[0].tickets+' tickets' : 'No losing events!'}</div></div>
+    <div class="insight"><div class="insight-title">Biggest loss platform</div><div class="insight-val neg">${lossByPlatform[0]?.name||'None'}</div><div class="insight-desc">${lossByPlatform[0] ? fmt$(lossByPlatform[0].totalLoss)+' from '+lossByPlatform[0].lossCount+' of '+lossByPlatform[0].txns+' sales' : 'No losses!'}</div></div>
+    <div class="insight"><div class="insight-title">Sweet spot quantity</div><div class="insight-val">${(() => { let bestI=0,bestP=-Infinity; qtyProfitBySize.forEach((p,i)=>{ if(p>bestP && qtyDist[i]>5){bestP=p;bestI=i;} }); return qtyBinLabels[bestI]+' ticket(s)'; })()}</div><div class="insight-desc">${(() => { let bestI=0,bestP=-Infinity; qtyProfitBySize.forEach((p,i)=>{ if(p>bestP && qtyDist[i]>5){bestP=p;bestI=i;} }); return fmt$(bestP)+' avg profit/sale &middot; '+qtyDist[bestI]+' sales'; })()}</div></div>
+  </div>`;
+
+  // === ARTIST / EVENT DRILL-DOWN ===
+  html += `<div class="section">Artist / Event Drill-Down</div>`;
+  html += `<div class="artist-select-wrap">
+    <input type="text" class="artist-search" id="artistSearch" placeholder="Search for an artist or event..." autocomplete="off">
+    <div class="artist-dropdown" id="artistDropdown"></div>
+  </div>
+  <div class="artist-detail" id="artistDetail"></div>`;
+
+  // Pre-define chart constants needed by drill-down
+  const dk = isDark(); const c = chartColors(); const b = baseOpts();
+  const pieColors = ['#3266ad','#1D9E75','#7F77DD','#BA7517','#D85A30','#D4537E','#534AB7','#639922','#5DCAA5','#378ADD','#E24B4A','#85B7EB'];
+
+  // Store event data globally for the drill-down
+  window._artistData = { events, eventGroups, rows, pieColors, isDark: dk, chartColors: c };
+
+  html += `<div class="section">Monthly revenue vs. profit</div>`;
+  html += `<div class="chart-wrap"><div class="legend"><span><span class="leg-dot" style="background:var(--accent);"></span>Revenue</span><span><span class="leg-dot" style="background:var(--green);"></span>Profit</span><span><span class="leg-dot" style="background:var(--amber);"></span>Cumulative profit</span></div><div class="chart-inner" style="height:300px;"><canvas id="chMonthly"></canvas></div></div>`;
+
+  html += `<div class="section">Monthly ticket volume</div>`;
+  html += `<div class="chart-wrap"><div class="legend"><span><span class="leg-dot" style="background:var(--purple);"></span>Tickets sold</span><span><span class="leg-dot" style="background:var(--coral);"></span>Avg qty / sale</span></div><div class="chart-inner" style="height:250px;"><canvas id="chMonthlyQty"></canvas></div></div>`;
+
+  html += `<div class="section">Quarterly overview</div>`;
+  html += `<div class="chart-wrap"><div class="legend"><span><span class="leg-dot" style="background:var(--blue-light);"></span>Revenue</span><span><span class="leg-dot" style="background:var(--accent);"></span>Profit</span></div><div class="chart-inner" style="height:260px;"><canvas id="chQ"></canvas></div></div>`;
+
+  html += `<div class="section">Top events by profit <span class="section-badge">Top 15</span></div><div class="chart-wrap">`;
+  const maxEP = topEvents[0]?.profit || 1;
+  topEvents.forEach((ev, i) => {
+    const pctW = Math.max(Math.round(ev.profit / maxEP * 100), 2);
+    const evRoi = ev.cost > 0 ? (ev.profit/ev.cost*100).toFixed(0) : '---';
+    html += `<div class="bar-row"><span class="bar-name" title="${ev.name}">${ev.name}</span><div class="bar-track"><div class="bar-fill" style="width:${pctW}%;background:${barColors[i%barColors.length]};">${pctW>30?fmt$(ev.profit):''}</div></div><span class="bar-val">${fmt$(ev.profit)} <span class="bar-roi">${evRoi}%</span></span></div>`;
+  });
+  html += `</div>`;
+
+  html += `<div class="section">Top events by quantity sold <span class="section-badge">Top 15</span></div><div class="chart-wrap">`;
+  const maxEQ = topByQty[0]?.tickets || 1;
+  topByQty.forEach((ev, i) => {
+    const pctW = Math.max(Math.round(ev.tickets / maxEQ * 100), 2);
+    html += `<div class="bar-row"><span class="bar-name" title="${ev.name}">${ev.name}</span><div class="bar-track"><div class="bar-fill" style="width:${pctW}%;background:${barColors[i%barColors.length]};">${pctW>25?ev.tickets+' tix':''}</div></div><span class="bar-val">${ev.tickets} tix <span class="bar-roi">${ev.txns} sales</span></span></div>`;
+  });
+  html += `</div>`;
+
+  if(worstEvents.length > 0) {
+    html += `<div class="section">Biggest losses <span class="section-badge" style="color:var(--red);">Watch list</span></div><div class="loss-list">`;
+    worstEvents.forEach(ev => { html += `<div class="loss-item"><span>${ev.name} <span style="color:var(--hint);font-size:11px;">(${ev.tickets} tix)</span></span><span class="neg">${fmt$(ev.profit)}</span></div>`; });
+    html += `</div>`;
+  }
+
+  // Platform pie charts section
+  html += `<div class="section">Selling outlets overview</div>`;
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+    <div class="chart-wrap" style="margin-bottom:0;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;text-align:center;">Revenue by outlet</div><div class="chart-inner" style="height:260px;"><canvas id="chPlatRevPie"></canvas></div></div>
+    <div class="chart-wrap" style="margin-bottom:0;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;text-align:center;">Profit by outlet</div><div class="chart-inner" style="height:260px;"><canvas id="chPlatProfPie"></canvas></div></div>
+  </div>`;
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+    <div class="chart-wrap" style="margin-bottom:0;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;text-align:center;">Sales volume by outlet</div><div class="chart-inner" style="height:260px;"><canvas id="chPlatTxnPie"></canvas></div></div>
+    <div class="chart-wrap" style="margin-bottom:0;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;text-align:center;">Tickets sold by outlet</div><div class="chart-inner" style="height:260px;"><canvas id="chPlatTixPie"></canvas></div></div>
+  </div>`;
+
+  html += `<div class="section">Platform profit bar chart</div>`;
+  html += `<div class="chart-wrap"><div class="legend"><span><span class="leg-dot" style="background:var(--accent);"></span>Profit</span><span><span class="leg-dot" style="background:var(--blue-light);"></span>Revenue</span></div><div class="chart-inner" style="height:${Math.max(platforms.filter(p=>p.profit>0).length*36+60,200)}px;"><canvas id="chPlat"></canvas></div></div>`;
+
+  html += `<div class="section">Platform breakdown</div><div class="table-wrap"><table class="data"><thead><tr><th>Platform</th><th>Profit</th><th>Revenue</th><th>Txns</th><th>Tickets</th><th>Avg Qty</th><th>Win Rate</th><th>Margin</th></tr></thead><tbody>`;
+  platforms.forEach(p => {
+    const mg = p.revenue>0?p.profit/p.revenue*100:0;
+    html += `<tr><td>${p.name}</td><td class="${p.profit>=0?'pos':'neg'}">${fmt$(p.profit)}</td><td>${fmt$(p.revenue)}</td><td>${p.txns}</td><td>${p.tickets}</td><td>${p.avgQty.toFixed(1)}</td><td>${p.winRate.toFixed(0)}%</td><td>${mg.toFixed(1)}%</td></tr>`;
+  });
+  html += `</tbody></table></div>`;
+
+  // Quantity analytics section
+  html += `<div class="section">Quantity distribution <span class="section-badge">tickets per sale</span></div>`;
+  html += `<div class="chart-wrap"><div class="chart-inner" style="height:240px;"><canvas id="chQtyDist"></canvas></div></div>`;
+
+  html += `<div class="section">Avg profit by sale size</div>`;
+  html += `<div class="chart-wrap"><div class="chart-inner" style="height:240px;"><canvas id="chQtyProfit"></canvas></div></div>`;
+
+  html += `<div class="section">Profit by city <span class="section-badge">Top 12</span></div><div class="chart-wrap"><div class="chart-inner" style="height:280px;"><canvas id="chCity"></canvas></div></div>`;
+
+  html += `<div class="section">Profit by state <span class="section-badge">Top 15</span></div>`;
+  html += `<div class="chart-wrap"><div class="chart-inner" style="height:280px;"><canvas id="chState"></canvas></div></div>`;
+
+  html += `<div class="section">Top venues</div><div class="table-wrap"><table class="data"><thead><tr><th>Venue</th><th>Profit</th><th>Tickets</th><th>Sales</th><th>Profit/Ticket</th></tr></thead><tbody>`;
+  venues.forEach(v => { html += `<tr><td>${v.name}</td><td class="${v.profit>=0?'pos':'neg'}">${fmt$(v.profit)}</td><td>${v.tickets}</td><td>${v.txns}</td><td class="${v.profit>=0?'pos':'neg'}">${fmt$(v.tickets>0?v.profit/v.tickets:0)}</td></tr>`; });
+  html += `</tbody></table></div>`;
+
+  html += `<div class="section">Day of week</div><div class="chart-wrap"><div class="chart-inner" style="height:220px;"><canvas id="chDow"></canvas></div></div>`;
+
+  html += `<div class="section">Profit distribution per sale</div><div class="chart-wrap"><div class="chart-inner" style="height:220px;"><canvas id="chDist"></canvas></div></div>`;
+
+  html += `<div class="section">Margin distribution</div><div class="chart-wrap"><div class="chart-inner" style="height:220px;"><canvas id="chMarginDist"></canvas></div></div>`;
+
+  // Fulfillment status
+  html += `<div class="section">Fulfillment status</div>`;
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+    <div class="chart-wrap" style="margin-bottom:0;"><div class="chart-inner" style="height:240px;"><canvas id="chFulfill"></canvas></div></div>
+    <div class="chart-wrap" style="margin-bottom:0;padding-top:24px;">`;
+  fulfillments.forEach(f => {
+    html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;"><span>${f.name}</span><span style="color:var(--muted);">${f.count} sales &middot; ${f.tickets} tix &middot; <span class="${f.profit>=0?'pos':'neg'}">${fmt$(f.profit)}</span></span></div>`;
+  });
+  html += `</div></div>`;
+
+  html += `<div class="footer">Ticket Resale Analytics &middot; Sales Mode &middot; ${totalTxns.toLocaleString()} rows &middot; ${totalTickets.toLocaleString()} tickets &middot; ${new Date().toLocaleDateString()}</div>`;
+  renderDashboard(html);
+
+  const pieOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{color:c.text,font:{size:11},padding:10,usePointStyle:true,pointStyle:'circle'}},tooltip:{callbacks:{label:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return ctx.label+': '+fmt$(ctx.raw)+' ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}},cutout:'40%'};
+
+  new Chart($('#chMonthly'), {
+    data:{labels:monthly.map(m=>m.month),datasets:[
+      {type:'bar',label:'Revenue',data:monthly.map(m=>m.revenue),backgroundColor:dk?'#378ADD':'#3266ad',order:2},
+      {type:'bar',label:'Profit',data:monthly.map(m=>m.profit),backgroundColor:monthly.map(m=>m.profit>=0?(dk?'#5DCAA5':'#1D9E75'):'#E24B4A'),order:3},
+      {type:'line',label:'Cum. Profit',data:monthly.map(m=>m.cumProfit),borderColor:'#BA7517',backgroundColor:'transparent',borderWidth:2,pointRadius:0,tension:0.3,yAxisID:'y2',order:1}
+    ]},
+    options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,maxRotation:45,autoSkip:true,maxTicksLimit:14}},y2:{position:'right',ticks:{color:c.text,callback:fmtK},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt$(Math.round(ctx.raw))}}}}
+  });
+
+  new Chart($('#chMonthlyQty'), {
+    data:{labels:monthly.map(m=>m.month),datasets:[
+      {type:'bar',label:'Tickets',data:monthly.map(m=>m.tickets),backgroundColor:dk?'#AFA9EC':'#7F77DD',order:2,yAxisID:'y'},
+      {type:'line',label:'Avg Qty/Sale',data:monthly.map(m=>m.avgQty),borderColor:'#D85A30',backgroundColor:'transparent',borderWidth:2,pointRadius:3,pointBackgroundColor:'#D85A30',tension:0.3,yAxisID:'y2',order:1}
+    ]},
+    options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,maxRotation:45,autoSkip:true,maxTicksLimit:14}},y:{...b.scales.y,ticks:{...b.scales.y.ticks,callback:v=>v}},y2:{position:'right',ticks:{color:c.text,callback:v=>v.toFixed(1)},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+(ctx.datasetIndex===0?ctx.raw+' tickets':ctx.raw.toFixed(1)+' avg')}}}}
+  });
+
+  new Chart($('#chQ'), { type:'bar', data:{labels:quarterly.map(q=>q.q),datasets:[{label:'Revenue',data:quarterly.map(q=>q.revenue),backgroundColor:'#85B7EB'},{label:'Profit',data:quarterly.map(q=>q.profit),backgroundColor:dk?'#378ADD':'#3266ad'}]}, options:{...b,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt$(Math.round(ctx.raw))}}}} });
+
+  const posPlats = platforms.filter(p => p.profit > 0);
+  new Chart($('#chPlat'), { type:'bar', data:{labels:posPlats.map(p=>p.name),datasets:[{label:'Profit',data:posPlats.map(p=>p.profit),backgroundColor:dk?'#378ADD':'#3266ad'},{label:'Revenue',data:posPlats.map(p=>p.revenue),backgroundColor:'#85B7EB'}]}, options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt$(Math.round(ctx.raw))}}},scales:{x:{ticks:{color:c.text,callback:fmtK},grid:{color:c.grid}},y:{ticks:{color:c.text},grid:{display:false}}}} });
+
+  // Pie charts for platforms
+  const platNames = platforms.map(p=>p.name);
+  new Chart($('#chPlatRevPie'), { type:'doughnut', data:{labels:platNames,datasets:[{data:platforms.map(p=>Math.max(p.revenue,0)),backgroundColor:pieColors}]}, options:pieOpts });
+  new Chart($('#chPlatProfPie'), { type:'doughnut', data:{labels:platforms.filter(p=>p.profit>0).map(p=>p.name),datasets:[{data:platforms.filter(p=>p.profit>0).map(p=>p.profit),backgroundColor:pieColors}]}, options:pieOpts });
+  new Chart($('#chPlatTxnPie'), { type:'doughnut', data:{labels:platNames,datasets:[{data:platforms.map(p=>p.txns),backgroundColor:pieColors}]}, options:{...pieOpts,plugins:{...pieOpts.plugins,tooltip:{callbacks:{label:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return ctx.label+': '+ctx.raw+' sales ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}}} });
+  new Chart($('#chPlatTixPie'), { type:'doughnut', data:{labels:platNames,datasets:[{data:platforms.map(p=>p.tickets),backgroundColor:pieColors}]}, options:{...pieOpts,plugins:{...pieOpts.plugins,tooltip:{callbacks:{label:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return ctx.label+': '+ctx.raw+' tickets ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}}} });
+
+  // Quantity distribution
+  new Chart($('#chQtyDist'), { type:'bar', data:{labels:qtyBinLabels,datasets:[{data:qtyDist,backgroundColor:dk?'#AFA9EC':'#7F77DD'}]}, options:{...b,scales:{...b.scales,y:{...b.scales.y,ticks:{...b.scales.y.ticks,callback:v=>v}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' sales'}}}} });
+
+  new Chart($('#chQtyProfit'), { type:'bar', data:{labels:qtyBinLabels,datasets:[{label:'Avg Profit',data:qtyProfitBySize,backgroundColor:qtyProfitBySize.map(v=>v>=0?(dk?'#5DCAA5':'#1D9E75'):'#E24B4A')}]}, options:{...b,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt$(Math.round(ctx.raw))+' avg profit'}}}} });
+
+  new Chart($('#chCity'), { type:'bar', data:{labels:cities.map(c=>c.name),datasets:[{data:cities.map(c=>c.profit),backgroundColor:dk?'#AFA9EC':'#7F77DD'}]}, options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,maxRotation:45}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt$(Math.round(ctx.raw))+' profit'}}}} });
+
+  new Chart($('#chState'), { type:'bar', data:{labels:states.map(s=>s.name),datasets:[{label:'Profit',data:states.map(s=>s.profit),backgroundColor:dk?'#5DCAA5':'#1D9E75'},{label:'Revenue',data:states.map(s=>s.revenue),backgroundColor:'#85B7EB'}]}, options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,maxRotation:45}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt$(Math.round(ctx.raw))}}}} });
+
+  const maxDow = Math.max(...dow.map(d=>d.profit));
+  new Chart($('#chDow'), { type:'bar', data:{labels:dow.map(d=>d.name),datasets:[{data:dow.map(d=>d.profit),backgroundColor:dow.map(d=>d.profit>maxDow*0.85?(dk?'#5DCAA5':'#1D9E75'):(dk?'#5DCAA5aa':'#5DCAA5'))}]}, options:{...b,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt$(Math.round(ctx.raw))+' ('+dow[ctx.dataIndex].tickets+' tix)'}}}} });
+  new Chart($('#chDist'), { type:'bar', data:{labels:binLabels,datasets:[{data:dist,backgroundColor:dist.map((v,i)=>i<5?'#E24B4A':i===5?(dk?'#5DCAA5':'#1D9E75'):(dk?'#378ADD':'#3266ad'))}]}, options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,font:{size:10}}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' sales'}}}} });
+
+  new Chart($('#chMarginDist'), { type:'bar', data:{labels:marginLabels,datasets:[{data:marginDist,backgroundColor:marginDist.map((v,i)=>i<3?'#E24B4A':i===3?(dk?'#5DCAA5':'#1D9E75'):(dk?'#378ADD':'#3266ad'))}]}, options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,font:{size:10}}},y:{...b.scales.y,ticks:{...b.scales.y.ticks,callback:v=>v}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' sales'}}}} });
+
+  new Chart($('#chFulfill'), { type:'doughnut', data:{labels:fulfillments.map(f=>f.name),datasets:[{data:fulfillments.map(f=>f.count),backgroundColor:pieColors}]}, options:{...pieOpts,plugins:{...pieOpts.plugins,tooltip:{callbacks:{label:ctx=>ctx.label+': '+ctx.raw+' sales'}}}} });
+
+  // === ARTIST DRILL-DOWN LOGIC ===
+  const artistSearch = document.getElementById('artistSearch');
+  const artistDropdown = document.getElementById('artistDropdown');
+  const artistDetail = document.getElementById('artistDetail');
+  let artistCharts = [];
+
+  // Sort events by # of transactions for dropdown
+  const sortedEvents = [...events].sort((a,b) => b.txns - a.txns);
+
+  function renderDropdown(filter) {
+    const f = (filter||'').toLowerCase();
+    const matched = f ? sortedEvents.filter(e => e.name.toLowerCase().includes(f)) : sortedEvents;
+    if(matched.length === 0) { artistDropdown.innerHTML = '<div class="artist-opt" style="color:var(--muted);pointer-events:none;">No matches found</div>'; }
+    else {
+      artistDropdown.innerHTML = matched.slice(0, 30).map(e =>
+        `<div class="artist-opt" data-event="${e.name.replace(/"/g,'&quot;')}">
+          <span class="artist-opt-name">${e.name}</span>
+          <span class="artist-opt-meta">${e.txns} sales &middot; ${e.tickets} tix &middot; <span class="${e.profit>=0?'pos':'neg'}">${fmt$(e.profit)}</span></span>
+        </div>`
+      ).join('');
+    }
+    artistDropdown.classList.add('open');
+  }
+
+  artistSearch.addEventListener('focus', () => renderDropdown(artistSearch.value));
+  artistSearch.addEventListener('input', () => renderDropdown(artistSearch.value));
+  document.addEventListener('click', e => { if(!e.target.closest('.artist-select-wrap')) artistDropdown.classList.remove('open'); });
+
+  artistDropdown.addEventListener('click', e => {
+    const opt = e.target.closest('.artist-opt');
+    if(!opt || !opt.dataset.event) return;
+    const evName = opt.dataset.event;
+    artistSearch.value = evName;
+    artistDropdown.classList.remove('open');
+    renderArtistDetail(evName);
+  });
+
+  function renderArtistDetail(evName) {
+    const sales = (eventGroups[evName] || []).slice().sort((a,b) => a._invoiceDate - b._invoiceDate);
+    if(sales.length === 0) return;
+
+    // Destroy old charts
+    artistCharts.forEach(ch => ch.destroy());
+    artistCharts = [];
+
+    const tRev = sales.reduce((s,r) => s+r._totalSale, 0);
+    const tCost = sales.reduce((s,r) => s+r._totalCost, 0);
+    const tProfit = sales.reduce((s,r) => s+r._totalProfit, 0);
+    const tTix = sales.reduce((s,r) => s+r._qty, 0);
+    const tWins = sales.filter(r => r._totalProfit > 0).length;
+    const tLosses = sales.filter(r => r._totalProfit < 0).length;
+    const tLossAmt = sales.filter(r => r._totalProfit < 0).reduce((s,r) => s+r._totalProfit, 0);
+    const tWinAmt = sales.filter(r => r._totalProfit > 0).reduce((s,r) => s+r._totalProfit, 0);
+    const artRoi = tCost > 0 ? tProfit / tCost * 100 : 0;
+    const artWinRate = sales.length > 0 ? tWins / sales.length * 100 : 0;
+    const bestArtSale = sales.reduce((b,r) => r._totalProfit > b._totalProfit ? r : b, sales[0]);
+    const worstArtSale = sales.reduce((w,r) => r._totalProfit < w._totalProfit ? r : w, sales[0]);
+    const avgMargin = sales.reduce((s,r) => s+r._margin, 0) / sales.length;
+
+    // Platform breakdown for this artist
+    const artPlatGroups = groupBy(sales, r => r['Customer'] || 'Unknown');
+    const artPlats = Object.entries(artPlatGroups).map(([name, g]) => ({
+      name, profit:g.reduce((s,r)=>s+r._totalProfit,0), revenue:g.reduce((s,r)=>s+r._totalSale,0),
+      txns:g.length, tickets:g.reduce((s,r)=>s+r._qty,0)
+    })).sort((a,b) => b.profit - a.profit);
+
+    // Venue breakdown
+    const artVenueGroups = groupBy(sales, r => r['Venue'] || 'Unknown');
+    const artVenues = Object.entries(artVenueGroups).map(([name, g]) => ({
+      name, profit:g.reduce((s,r)=>s+r._totalProfit,0), tickets:g.reduce((s,r)=>s+r._qty,0), txns:g.length
+    })).sort((a,b) => b.profit - a.profit);
+
+    // Monthly breakdown for this artist
+    const artMonthGroups = groupBy(sales, r => { const d = r._invoiceDate; return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); });
+    const artMonthLabels = Object.keys(artMonthGroups).sort();
+    let artCum = 0;
+    const artMonthly = artMonthLabels.map(m => {
+      const g = artMonthGroups[m]; const p = g.reduce((s,r)=>s+r._totalProfit,0); artCum += p;
+      return { month: m, profit: p, revenue: g.reduce((s,r)=>s+r._totalSale,0), tickets: g.reduce((s,r)=>s+r._qty,0), cumProfit: artCum };
+    });
+
+    let h = '';
+    h += `<div class="artist-detail-header"><h3>${evName}</h3><button class="artist-close" onclick="document.getElementById('artistDetail').classList.remove('visible');document.getElementById('artistSearch').value='';">Close</button></div>`;
+
+    // Artist KPIs
+    h += `<div class="kpi-grid">
+      <div class="kpi"><div class="kpi-label">Total profit</div><div class="kpi-val ${tProfit>=0?'kpi-pos':'kpi-neg'}">${fmt$(tProfit)}</div><div class="kpi-sub">${artRoi.toFixed(1)}% ROI</div></div>
+      <div class="kpi"><div class="kpi-label">Revenue</div><div class="kpi-val">${fmt$(tRev)}</div><div class="kpi-sub">Cost: ${fmt$(tCost)}</div></div>
+      <div class="kpi"><div class="kpi-label">Tickets sold</div><div class="kpi-val">${tTix}</div><div class="kpi-sub">${sales.length} transactions</div></div>
+      <div class="kpi"><div class="kpi-label">Win rate</div><div class="kpi-val">${artWinRate.toFixed(0)}%</div><div class="kpi-sub">${tWins}W / ${tLosses}L</div></div>
+    </div>`;
+
+    h += `<div class="kpi-grid">
+      <div class="kpi"><div class="kpi-label">Best sale</div><div class="kpi-val kpi-pos">${fmt$(bestArtSale._totalProfit)}</div><div class="kpi-sub">${bestArtSale._qty} tix @ ${fmt$(bestArtSale._avgTicket)}/ea</div></div>
+      <div class="kpi"><div class="kpi-label">Worst sale</div><div class="kpi-val kpi-neg">${fmt$(worstArtSale._totalProfit)}</div><div class="kpi-sub">${worstArtSale._qty} tix @ ${fmt$(worstArtSale._avgTicket)}/ea</div></div>
+      <div class="kpi"><div class="kpi-label">Total losses</div><div class="kpi-val kpi-neg">${fmt$(tLossAmt)}</div><div class="kpi-sub">Total wins: ${fmt$(tWinAmt)}</div></div>
+      <div class="kpi"><div class="kpi-label">Avg margin</div><div class="kpi-val">${(avgMargin*100).toFixed(1)}%</div><div class="kpi-sub">Across all sales</div></div>
+    </div>`;
+
+    // Monthly profit chart for this artist
+    if(artMonthly.length > 1) {
+      h += `<div style="font-size:14px;font-weight:600;margin:16px 0 8px;">Monthly profit trend</div>`;
+      h += `<div class="chart-wrap" style="margin-bottom:16px;"><div class="chart-inner" style="height:200px;"><canvas id="chArtMonthly"></canvas></div></div>`;
+    }
+
+    // Platform pie for this artist
+    if(artPlats.length > 1) {
+      h += `<div style="font-size:14px;font-weight:600;margin:16px 0 8px;">Outlet breakdown</div>`;
+      h += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+        <div class="chart-wrap" style="margin-bottom:0;"><div style="font-size:12px;text-align:center;margin-bottom:4px;color:var(--muted);">By revenue</div><div class="chart-inner" style="height:200px;"><canvas id="chArtPlatRev"></canvas></div></div>
+        <div class="chart-wrap" style="margin-bottom:0;"><div style="font-size:12px;text-align:center;margin-bottom:4px;color:var(--muted);">By tickets</div><div class="chart-inner" style="height:200px;"><canvas id="chArtPlatTix"></canvas></div></div>
+      </div>`;
+    }
+
+    // Venue breakdown table
+    if(artVenues.length > 1) {
+      h += `<div style="font-size:14px;font-weight:600;margin:16px 0 8px;">Venue breakdown</div>`;
+      h += `<div class="table-wrap"><table class="data"><thead><tr><th>Venue</th><th>Profit</th><th>Tickets</th><th>Sales</th></tr></thead><tbody>`;
+      artVenues.forEach(v => { h += `<tr><td>${v.name}</td><td class="${v.profit>=0?'pos':'neg'}">${fmt$(v.profit)}</td><td>${v.tickets}</td><td>${v.txns}</td></tr>`; });
+      h += `</tbody></table></div>`;
+    }
+
+    // Full sales table for this artist
+    h += `<div style="font-size:14px;font-weight:600;margin:16px 0 8px;">All transactions</div>`;
+    h += `<div class="table-wrap"><table class="data"><thead><tr><th>Date</th><th>Venue</th><th>Sec / Row</th><th>Qty</th><th>Cost</th><th>Sale</th><th>Profit</th><th>Margin</th><th>Platform</th></tr></thead><tbody>`;
+    sales.forEach(r => {
+      const d = r._invoiceDate ? r._invoiceDate.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '?';
+      const sec = [r['Section']||'',r['Row']||''].filter(Boolean).join(' / ');
+      h += `<tr><td>${d}</td><td>${(r['Venue']||'').length>25?(r['Venue']||'').slice(0,25)+'...':r['Venue']||''}</td><td>${sec}</td><td>${r._qty}</td><td>${fmt$(r._totalCost)}</td><td>${fmt$(r._totalSale)}</td><td class="${r._totalProfit>=0?'pos':'neg'}">${fmt$(r._totalProfit)}</td><td>${(r._margin*100).toFixed(0)}%</td><td>${r['Customer']||''}</td></tr>`;
+    });
+    h += `</tbody></table></div>`;
+
+    artistDetail.innerHTML = h;
+    artistDetail.classList.add('visible');
+    artistDetail.scrollIntoView({ behavior:'smooth', block:'start' });
+
+    // Render artist-specific charts
+    const artC = chartColors();
+    const artB = baseOpts();
+
+    if(artMonthly.length > 1) {
+      const ch1 = new Chart(document.getElementById('chArtMonthly'), {
+        data:{labels:artMonthly.map(m=>m.month),datasets:[
+          {type:'bar',label:'Profit',data:artMonthly.map(m=>m.profit),backgroundColor:artMonthly.map(m=>m.profit>=0?(dk?'#5DCAA5':'#1D9E75'):'#E24B4A'),order:2},
+          {type:'line',label:'Cumulative',data:artMonthly.map(m=>m.cumProfit),borderColor:'#BA7517',backgroundColor:'transparent',borderWidth:2,pointRadius:3,pointBackgroundColor:'#BA7517',tension:0.3,yAxisID:'y2',order:1}
+        ]},
+        options:{...artB,scales:{...artB.scales,x:{...artB.scales.x,ticks:{...artB.scales.x.ticks,maxRotation:45}},y2:{position:'right',ticks:{color:artC.text,callback:fmtK},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt$(Math.round(ctx.raw))}}}}
+      });
+      artistCharts.push(ch1);
+    }
+
+    if(artPlats.length > 1) {
+      const artPieOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{color:artC.text,font:{size:10},padding:8,usePointStyle:true,pointStyle:'circle'}},tooltip:{callbacks:{label:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return ctx.label+': '+fmt$(ctx.raw)+' ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}},cutout:'40%'};
+      const ch2 = new Chart(document.getElementById('chArtPlatRev'), {
+        type:'doughnut', data:{labels:artPlats.map(p=>p.name),datasets:[{data:artPlats.map(p=>Math.max(p.revenue,0)),backgroundColor:pieColors}]}, options:artPieOpts
+      });
+      const ch3 = new Chart(document.getElementById('chArtPlatTix'), {
+        type:'doughnut', data:{labels:artPlats.map(p=>p.name),datasets:[{data:artPlats.map(p=>p.tickets),backgroundColor:pieColors}]},
+        options:{...artPieOpts,plugins:{...artPieOpts.plugins,tooltip:{callbacks:{label:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return ctx.label+': '+ctx.raw+' tix ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}}}
+      });
+      artistCharts.push(ch2, ch3);
+    }
+  }
+}
+</script>
+</body>
+</html>

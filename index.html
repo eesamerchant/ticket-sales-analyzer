@@ -105,6 +105,39 @@ table.data tr:hover td{background:var(--surface)}
 .inv-group.open .inv-group-arrow{transform:rotate(90deg)}
 .inv-group-body{display:none;border-top:1px solid var(--border)}
 .inv-group.open .inv-group-body{display:block}
+.cal-wrap{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px}
+.cal-controls{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.cal-nav{display:flex;align-items:center;gap:12px}
+.cal-nav-btn{background:var(--surface);border:1px solid var(--border);color:var(--text);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;font-family:inherit}
+.cal-nav-btn:hover{background:var(--border)}
+.cal-month-label{font-size:16px;font-weight:600;min-width:160px;text-align:center}
+.cal-toggles{display:flex;gap:6px}
+.cal-toggle-group{display:flex;background:var(--surface);border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.cal-toggle{padding:6px 14px;font-size:12px;font-weight:500;cursor:pointer;border:none;background:transparent;color:var(--muted);font-family:inherit;transition:all 0.15s}
+.cal-toggle.active{background:var(--accent);color:#fff}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-hdr{font-size:11px;font-weight:600;color:var(--muted);text-align:center;padding:6px 4px;text-transform:uppercase}
+.cal-cell{min-height:64px;border-radius:6px;padding:6px 8px;font-size:11px;position:relative;border:1px solid transparent;transition:background 0.15s}
+.cal-cell-date{font-weight:600;font-size:12px;margin-bottom:2px;color:var(--text)}
+.cal-cell-val{font-weight:700;font-size:13px}
+.cal-cell-sub{font-size:10px;color:var(--muted);margin-top:1px}
+.cal-cell-empty{background:transparent}
+.cal-cell-zero{background:var(--surface)}
+.cal-cell-pos{background:rgba(29,158,117,0.12)}
+.cal-cell-neg{background:rgba(226,75,74,0.15)}
+.cal-cell-pos .cal-cell-val{color:var(--green)}
+.cal-cell-neg .cal-cell-val{color:var(--red)}
+.cal-week-row{display:contents}
+.cal-week-highlight .cal-cell:not(.cal-cell-empty){border-radius:0}
+.cal-week-highlight .cal-cell:first-child:not(.cal-cell-empty){border-radius:6px 0 0 6px}
+.cal-week-highlight .cal-cell:last-child:not(.cal-cell-empty){border-radius:0 6px 6px 0}
+.cal-month-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.cal-month-cell{border-radius:8px;padding:16px;text-align:center;min-height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.cal-month-cell-name{font-size:13px;font-weight:600}
+.cal-month-cell-val{font-size:18px;font-weight:700}
+.cal-month-cell-sub{font-size:11px;color:var(--muted)}
+.cal-year-nav{display:flex;align-items:center;gap:12px}
+.cal-year-label{font-size:16px;font-weight:600;min-width:60px;text-align:center}
 </style>
 </head>
 <body>
@@ -736,8 +769,218 @@ function analyzeSales(rows, fileName) {
   });
   html += `</div></div>`;
 
+  html += `<div class="section">Sales Calendar</div>`;
+  html += `<div class="cal-wrap" id="calWrap"><div id="calContainer"></div></div>`;
+
   html += `<div class="footer">Ticket Resale Analytics &middot; Sales Mode &middot; ${totalTxns.toLocaleString()} rows &middot; ${totalTickets.toLocaleString()} tickets &middot; ${new Date().toLocaleDateString()}</div>`;
   renderDashboard(html);
+
+  // --- Calendar logic ---
+  (function() {
+    const container = document.getElementById('calContainer');
+    if(!container) return;
+
+    // Build day-level lookup: { 'YYYY-MM-DD': { profit, revenue, tickets, txns } }
+    const dayMap = {};
+    days.forEach(d => {
+      dayMap[d.date] = { profit: d.profit, revenue: d.revenue, tickets: d.tickets, txns: d.txns };
+    });
+
+    // Find date range
+    const minDate = new Date(Math.min(...rows.map(r => r._invoiceDate.getTime())));
+    const maxDate = new Date(Math.max(...rows.map(r => r._invoiceDate.getTime())));
+
+    let calView = 'days';   // days | weeks | months
+    let calMetric = 'pnl';  // pnl | sales
+    let calMonth = maxDate.getMonth();
+    let calYear = maxDate.getFullYear();
+    let calYearView = maxDate.getFullYear();
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function dateKey(y, m, d) { return y + '-' + pad(m+1) + '-' + pad(d); }
+    function cellClass(val) { return val > 0 ? 'cal-cell-pos' : val < 0 ? 'cal-cell-neg' : 'cal-cell-zero'; }
+    function monthCellClass(val) { return val > 0 ? 'cal-cell-pos' : val < 0 ? 'cal-cell-neg' : 'cal-cell-zero'; }
+    function fmtVal(v) { return (v < 0 ? '-' : '') + '$' + Math.abs(Math.round(v)).toLocaleString(); }
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    function render() {
+      let h = '';
+      // Controls
+      h += '<div class="cal-controls">';
+      if(calView === 'months') {
+        h += '<div class="cal-year-nav">';
+        h += '<button class="cal-nav-btn" id="calPrev">&#9664;</button>';
+        h += '<span class="cal-year-label" id="calLabel">' + calYearView + '</span>';
+        h += '<button class="cal-nav-btn" id="calNext">&#9654;</button>';
+        h += '</div>';
+      } else {
+        h += '<div class="cal-nav">';
+        h += '<button class="cal-nav-btn" id="calPrev">&#9664;</button>';
+        h += '<span class="cal-month-label" id="calLabel">' + monthNames[calMonth] + ' ' + calYear + '</span>';
+        h += '<button class="cal-nav-btn" id="calNext">&#9654;</button>';
+        h += '</div>';
+      }
+      h += '<div class="cal-toggles">';
+      h += '<div class="cal-toggle-group">';
+      h += '<button class="cal-toggle' + (calView==='days'?' active':'') + '" data-view="days">Days</button>';
+      h += '<button class="cal-toggle' + (calView==='weeks'?' active':'') + '" data-view="weeks">Weeks</button>';
+      h += '<button class="cal-toggle' + (calView==='months'?' active':'') + '" data-view="months">Months</button>';
+      h += '</div>';
+      h += '<div class="cal-toggle-group">';
+      h += '<button class="cal-toggle' + (calMetric==='pnl'?' active':'') + '" data-metric="pnl">P/L</button>';
+      h += '<button class="cal-toggle' + (calMetric==='sales'?' active':'') + '" data-metric="sales">Sales</button>';
+      h += '</div>';
+      h += '</div></div>';
+
+      if(calView === 'months') {
+        h += renderMonthsView();
+      } else {
+        h += renderCalendarGrid();
+      }
+      container.innerHTML = h;
+      bindEvents();
+    }
+
+    function renderCalendarGrid() {
+      let h = '<div class="cal-grid">';
+      const hdrs = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      hdrs.forEach(d => { h += '<div class="cal-hdr">' + d + '</div>'; });
+
+      const firstDay = new Date(calYear, calMonth, 1).getDay();
+      const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+      // Build week rows for week view
+      const weeks = [];
+      let currentWeek = [];
+      // Fill leading empties
+      for(let i = 0; i < firstDay; i++) currentWeek.push(null);
+      for(let d = 1; d <= daysInMonth; d++) {
+        currentWeek.push(d);
+        if(currentWeek.length === 7) { weeks.push(currentWeek); currentWeek = []; }
+      }
+      if(currentWeek.length > 0) {
+        while(currentWeek.length < 7) currentWeek.push(null);
+        weeks.push(currentWeek);
+      }
+
+      if(calView === 'weeks') {
+        // Week view: each row colored by weekly total
+        weeks.forEach(week => {
+          let weekTotal = 0;
+          let weekTxns = 0;
+          let weekTix = 0;
+          let hasData = false;
+          week.forEach(d => {
+            if(d !== null) {
+              const key = dateKey(calYear, calMonth, d);
+              const data = dayMap[key];
+              if(data) {
+                weekTotal += calMetric === 'pnl' ? data.profit : data.revenue;
+                weekTxns += data.txns;
+                weekTix += data.tickets;
+                hasData = true;
+              }
+            }
+          });
+          const wClass = hasData ? cellClass(weekTotal) : '';
+          week.forEach(d => {
+            if(d === null) {
+              h += '<div class="cal-cell cal-cell-empty"></div>';
+            } else {
+              const key = dateKey(calYear, calMonth, d);
+              const data = dayMap[key];
+              h += '<div class="cal-cell ' + wClass + '">';
+              h += '<div class="cal-cell-date">' + d + '</div>';
+              if(hasData) {
+                h += '<div class="cal-cell-val" style="font-size:11px;">' + fmtVal(weekTotal) + '</div>';
+                h += '<div class="cal-cell-sub">' + weekTxns + ' sales</div>';
+              }
+              h += '</div>';
+            }
+          });
+        });
+      } else {
+        // Day view: each cell colored individually
+        // Leading empties
+        for(let i = 0; i < firstDay; i++) {
+          h += '<div class="cal-cell cal-cell-empty"></div>';
+        }
+        for(let d = 1; d <= daysInMonth; d++) {
+          const key = dateKey(calYear, calMonth, d);
+          const data = dayMap[key];
+          const val = data ? (calMetric === 'pnl' ? data.profit : data.revenue) : 0;
+          const cls = data ? cellClass(val) : 'cal-cell-empty';
+          h += '<div class="cal-cell ' + cls + '">';
+          h += '<div class="cal-cell-date">' + d + '</div>';
+          if(data) {
+            h += '<div class="cal-cell-val">' + fmtVal(val) + '</div>';
+            h += '<div class="cal-cell-sub">' + data.txns + ' sale' + (data.txns!==1?'s':'') + ' &middot; ' + data.tickets + ' tix</div>';
+          }
+          h += '</div>';
+        }
+        // Trailing empties
+        const totalCells = firstDay + daysInMonth;
+        const trailing = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+        for(let i = 0; i < trailing; i++) {
+          h += '<div class="cal-cell cal-cell-empty"></div>';
+        }
+      }
+      h += '</div>';
+      return h;
+    }
+
+    function renderMonthsView() {
+      let h = '<div class="cal-month-grid">';
+      for(let m = 0; m < 12; m++) {
+        let mTotal = 0, mTxns = 0, mTix = 0, hasData = false;
+        const dInM = new Date(calYearView, m + 1, 0).getDate();
+        for(let d = 1; d <= dInM; d++) {
+          const key = dateKey(calYearView, m, d);
+          const data = dayMap[key];
+          if(data) {
+            mTotal += calMetric === 'pnl' ? data.profit : data.revenue;
+            mTxns += data.txns;
+            mTix += data.tickets;
+            hasData = true;
+          }
+        }
+        const cls = hasData ? monthCellClass(mTotal) : 'cal-cell-zero';
+        h += '<div class="cal-month-cell ' + cls + '">';
+        h += '<div class="cal-month-cell-name">' + monthShort[m] + '</div>';
+        if(hasData) {
+          h += '<div class="cal-month-cell-val">' + fmtVal(mTotal) + '</div>';
+          h += '<div class="cal-month-cell-sub">' + mTxns + ' sales &middot; ' + mTix + ' tix</div>';
+        } else {
+          h += '<div class="cal-month-cell-val" style="color:var(--hint);">--</div>';
+        }
+        h += '</div>';
+      }
+      h += '</div>';
+      return h;
+    }
+
+    function bindEvents() {
+      document.getElementById('calPrev').addEventListener('click', () => {
+        if(calView === 'months') { calYearView--; }
+        else { calMonth--; if(calMonth < 0) { calMonth = 11; calYear--; } }
+        render();
+      });
+      document.getElementById('calNext').addEventListener('click', () => {
+        if(calView === 'months') { calYearView++; }
+        else { calMonth++; if(calMonth > 11) { calMonth = 0; calYear++; } }
+        render();
+      });
+      container.querySelectorAll('[data-view]').forEach(btn => {
+        btn.addEventListener('click', () => { calView = btn.dataset.view; render(); });
+      });
+      container.querySelectorAll('[data-metric]').forEach(btn => {
+        btn.addEventListener('click', () => { calMetric = btn.dataset.metric; render(); });
+      });
+    }
+
+    render();
+  })();
 
   const pieOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{color:c.text,font:{size:11},padding:10,usePointStyle:true,pointStyle:'circle'}},tooltip:{callbacks:{label:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return ctx.label+': '+fmt$(ctx.raw)+' ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}},cutout:'40%'};
 

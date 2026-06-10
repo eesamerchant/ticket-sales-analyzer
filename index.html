@@ -85,6 +85,26 @@ table.data tr:hover td{background:var(--surface)}
 .artist-detail-header h3{font-size:18px;font-weight:600}
 .artist-close{background:var(--surface);border:none;color:var(--text);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit}
 .artist-close:hover{background:var(--border)}
+.clickable-artist{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;text-decoration-color:var(--hint);transition:all 0.15s}
+.clickable-artist:hover{color:var(--accent);text-decoration-color:var(--accent);text-decoration-style:solid}
+.kpi-sub .clickable-artist,.insight-val .clickable-artist,.insight-desc .clickable-artist{text-decoration-color:var(--hint)}
+.day-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+.day-card-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px}
+.day-card-date{font-size:15px;font-weight:600}
+.day-card-profit{font-size:16px;font-weight:700}
+.day-card-meta{font-size:12px;color:var(--muted);margin-top:4px}
+.day-card-events{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6}
+.day-card-badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;margin-left:6px;vertical-align:middle}
+.day-rank-1{background:#FFD70033;color:#BA7517}.day-rank-2{background:#C0C0C033;color:var(--muted)}.day-rank-3{background:#CD7F3233;color:#D85A30}
+.inv-group{background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;overflow:hidden}
+.inv-group-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;cursor:pointer;transition:background 0.15s;user-select:none}
+.inv-group-header:hover{background:var(--surface)}
+.inv-group-name{font-size:14px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inv-group-meta{font-size:12px;color:var(--muted);margin-left:12px;white-space:nowrap;display:flex;gap:12px;align-items:center}
+.inv-group-arrow{font-size:11px;color:var(--hint);margin-left:8px;transition:transform 0.2s}
+.inv-group.open .inv-group-arrow{transform:rotate(90deg)}
+.inv-group-body{display:none;border-top:1px solid var(--border)}
+.inv-group.open .inv-group-body{display:block}
 </style>
 </head>
 <body>
@@ -154,6 +174,8 @@ function isDark() { return window.matchMedia('(prefers-color-scheme: dark)').mat
 function chartColors() { const dk = isDark(); return { grid: dk ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', text: dk ? '#ccc' : '#666' }; }
 function baseOpts() { const c = chartColors(); return { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{ticks:{color:c.text,font:{size:10}},grid:{display:false}},y:{ticks:{color:c.text,callback:fmtK},grid:{color:c.grid}}} }; }
 const barColors = ['#3266ad','#378ADD','#5DCAA5','#1D9E75','#7F77DD','#534AB7','#D85A30','#BA7517','#D4537E','#639922','#3266ad','#378ADD','#5DCAA5','#1D9E75','#7F77DD'];
+function artistLink(name, maxLen) { const display = maxLen && name.length > maxLen ? name.slice(0,maxLen)+'...' : name; const safe = name.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); return `<span class="clickable-artist" data-artist="${safe}" title="Click to drill down">${display}</span>`; }
+document.addEventListener('click', e => { const el = e.target.closest('.clickable-artist'); if(el && el.dataset.artist && window._renderArtistDetail) { const n = el.dataset.artist; const s = document.getElementById('artistSearch'); if(s) s.value = n; window._renderArtistDetail(n); } });
 
 function analyzeInventory(rows, fileName) {
   rows.forEach(r => {
@@ -313,13 +335,33 @@ function analyzeInventory(rows, fileName) {
   });
   html += `</div>`;
 
-  html += `<div class="section">Full inventory table</div>`;
-  html += `<div class="table-wrap"><table class="data"><thead><tr><th>Event</th><th>Venue</th><th>City</th><th>Qty</th><th>Section</th><th>Cost</th><th>List/ea</th><th>Status</th></tr></thead><tbody>`;
-  rows.sort((a,b)=>(a._eventDate||0)-(b._eventDate||0)).forEach(r => {
-    const sc = r._status === 'ACTIVE' ? 'status-active' : 'status-ready';
-    html += `<tr><td>${r['Event Name']||''}</td><td>${r['Venue']||''}</td><td>${r['City']||''}</td><td>${r._qty}</td><td>${r['Section']||''}</td><td>${fmt$(r._cost)}</td><td>${fmt$(r._list)}</td><td><span class="status-dot ${sc}"></span>${r._status}</td></tr>`;
+  html += `<div class="section">Inventory by artist <span class="section-badge">${events.length} artists &middot; ${listings} listings</span></div>`;
+  const invSorted = [...events].sort((a,b) => b.cost - a.cost);
+  invSorted.forEach((ev, idx) => {
+    const evRows = (eventGroups[ev.name] || []).sort((a,b) => (a._eventDate||0) - (b._eventDate||0));
+    const activeCount = evRows.filter(r => r._status === 'ACTIVE').length;
+    const readyCount = evRows.filter(r => r._status === 'READY').length;
+    const pp = ev.listVal - ev.cost;
+    html += `<div class="inv-group" id="invGrp${idx}">
+      <div class="inv-group-header" onclick="document.getElementById('invGrp${idx}').classList.toggle('open')">
+        <span class="inv-group-name">${ev.name}</span>
+        <span class="inv-group-meta">
+          <span>${ev.qty} tix</span>
+          <span>${fmt$(ev.cost)} cost</span>
+          <span class="${pp>=0?'pos':'neg'}">${fmt$(pp)} pot.</span>
+          <span>${activeCount > 0 ? '<span class="status-dot status-active"></span>'+activeCount : ''}${readyCount > 0 ? ' <span class="status-dot status-ready"></span>'+readyCount : ''}</span>
+        </span>
+        <span class="inv-group-arrow">&#9654;</span>
+      </div>
+      <div class="inv-group-body">
+        <table class="data" style="border:none;border-radius:0;"><thead><tr><th>Venue</th><th>City</th><th>Date</th><th>Qty</th><th>Section</th><th>Cost</th><th>List/ea</th><th>Status</th></tr></thead><tbody>`;
+    evRows.forEach(r => {
+      const sc = r._status === 'ACTIVE' ? 'status-active' : 'status-ready';
+      const evDate = r._eventDate ? r._eventDate.toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '?';
+      html += `<tr><td>${r['Venue']||''}</td><td>${r['City']||''}</td><td>${evDate}</td><td>${r._qty}</td><td>${r['Section']||''}</td><td>${fmt$(r._cost)}</td><td>${fmt$(r._list)}</td><td><span class="status-dot ${sc}"></span>${r._status}</td></tr>`;
+    });
+    html += `</tbody></table></div></div>`;
   });
-  html += `</tbody></table></div>`;
 
   html += `<div class="footer">Ticket Resale Analytics &middot; Inventory Mode &middot; ${listings} listings &middot; ${new Date().toLocaleDateString()}</div>`;
   renderDashboard(html);
@@ -406,7 +448,6 @@ function analyzeSales(rows, fileName) {
   const uniqueVenues = new Set(rows.map(r => r['Venue'])).size;
   const uniqueCities = new Set(rows.map(r => r['City'])).size;
 
-  // Loss metrics
   const totalLosses = rows.filter(r => r._totalProfit < 0).reduce((s,r) => s + r._totalProfit, 0);
   const lossCount = losses;
   const avgLoss = lossCount > 0 ? totalLosses / lossCount : 0;
@@ -414,7 +455,6 @@ function analyzeSales(rows, fileName) {
   const totalWins = rows.filter(r => r._totalProfit > 0).reduce((s,r) => s + r._totalProfit, 0);
   const avgWin = wins > 0 ? totalWins / wins : 0;
   const lossRate = lossCount / totalTxns * 100;
-  // Win/loss streaks
   let curStreak = 0, maxWinStreak = 0, maxLossStreak = 0, curType = '';
   rows.forEach(r => {
     const t = r._totalProfit > 0 ? 'W' : r._totalProfit < 0 ? 'L' : 'B';
@@ -422,7 +462,6 @@ function analyzeSales(rows, fileName) {
     if(t === 'W' && curStreak > maxWinStreak) maxWinStreak = curStreak;
     if(t === 'L' && curStreak > maxLossStreak) maxLossStreak = curStreak;
   });
-  // Quantity metrics
   const avgQtyPerSale = totalTickets / totalTxns;
   const qtys = rows.map(r => r._qty).sort((a,b) => a - b);
   const medianQty = qtys[Math.floor(qtys.length/2)];
@@ -434,6 +473,23 @@ function analyzeSales(rows, fileName) {
   const qtyBinLabels = ['1','2','3','4','5-6','7-10','11+'];
   const qtyDist = qtyBins.map(([lo,hi]) => rows.filter(r => r._qty >= lo && r._qty <= hi).length);
   const qtyProfitBySize = qtyBins.map(([lo,hi]) => { const g = rows.filter(r => r._qty >= lo && r._qty <= hi); return g.length > 0 ? g.reduce((s,r)=>s+r._totalProfit,0)/g.length : 0; });
+
+  const dayKey = r => { const d = r._invoiceDate; return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+  const dayGroups = groupBy(rows, dayKey);
+  const days = Object.entries(dayGroups).map(([date, g]) => ({
+    date, dateObj: g[0]._invoiceDate,
+    profit: g.reduce((s,r) => s+r._totalProfit, 0),
+    revenue: g.reduce((s,r) => s+r._totalSale, 0),
+    cost: g.reduce((s,r) => s+r._totalCost, 0),
+    tickets: g.reduce((s,r) => s+r._qty, 0),
+    txns: g.length,
+    wins: g.filter(r => r._totalProfit > 0).length,
+    losses: g.filter(r => r._totalProfit < 0).length,
+    events: [...new Set(g.map(r => r['Event Name']))],
+    sales: g
+  }));
+  const bestDays = [...days].sort((a,b) => b.profit - a.profit).slice(0, 3);
+  const worstDays = [...days].sort((a,b) => a.profit - b.profit).slice(0, 1);
 
   const monthKey = r => { const d = r._invoiceDate; return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); };
   const monthGroups = groupBy(rows, monthKey);
@@ -466,7 +522,6 @@ function analyzeSales(rows, fileName) {
     winRate: g.filter(r=>r._totalProfit>0).length/g.length*100
   })).sort((a,b) => b.profit - a.profit);
 
-  // Loss by platform
   const lossByPlatform = Object.entries(platGroups).map(([name, g]) => {
     const ls = g.filter(r => r._totalProfit < 0);
     return { name, lossCount: ls.length, totalLoss: ls.reduce((s,r)=>s+r._totalProfit,0), txns: g.length };
@@ -491,12 +546,10 @@ function analyzeSales(rows, fileName) {
   const binLabels = ['<-500','-500~-200','-200~-100','-100~-50','-50~0','0~50','50~100','100~200','200~500','500~1K','1K+'];
   const dist = bins.map(([lo,hi]) => rows.filter(r => r._totalProfit >= lo && r._totalProfit < hi).length);
 
-  // Margin distribution
   const marginBins = [[-Infinity,-0.5],[-0.5,-0.2],[-0.2,0],[0,0.2],[0.2,0.5],[0.5,1],[1,2],[2,Infinity]];
   const marginLabels = ['<-50%','-50~-20%','-20~0%','0~20%','20~50%','50~100%','100~200%','200%+'];
   const marginDist = marginBins.map(([lo,hi]) => rows.filter(r => r._margin >= lo && r._margin < hi).length);
 
-  // Fulfillment breakdown
   const fulfGroups = groupBy(rows, r => r._fulfillment);
   const fulfillments = Object.entries(fulfGroups).map(([name, g]) => ({
     name: name.charAt(0)+name.slice(1).toLowerCase(), count:g.length, tickets:g.reduce((s,r)=>s+r._qty,0), profit:g.reduce((s,r)=>s+r._totalProfit,0)
@@ -514,51 +567,66 @@ function analyzeSales(rows, fileName) {
     <p style="font-size:13px;color:var(--muted);">${fileName} &middot; ${dateRange} &middot; ${totalTxns.toLocaleString()} transactions</p></div>
     <button class="new-file-btn" onclick="location.reload()">Analyze another file</button></div>`;
 
-  // Row 1: Revenue, Profit, Win Rate, Best Sale
   html += `<div class="kpi-grid">
     <div class="kpi"><div class="kpi-label">Total revenue</div><div class="kpi-val">${fmt$(totalRevenue)}</div><div class="kpi-sub">${totalTickets.toLocaleString()} tickets sold</div></div>
     <div class="kpi"><div class="kpi-label">Total profit</div><div class="kpi-val kpi-pos">${fmt$(totalProfit)}</div><div class="kpi-sub">${roi.toFixed(1)}% ROI</div></div>
     <div class="kpi"><div class="kpi-label">Win rate</div><div class="kpi-val">${(winRate*100).toFixed(1)}%</div><div class="kpi-sub">${wins} W / ${losses} L / ${breakEvens} BE</div></div>
-    <div class="kpi"><div class="kpi-label">Best single sale</div><div class="kpi-val kpi-pos">${fmt$(bestSale._totalProfit)}</div><div class="kpi-sub">${(bestSale['Event Name']||'').slice(0,30)}</div></div>
+    <div class="kpi"><div class="kpi-label">Best single sale</div><div class="kpi-val kpi-pos">${fmt$(bestSale._totalProfit)}</div><div class="kpi-sub">${artistLink(bestSale['Event Name']||'',30)}</div></div>
   </div>`;
 
-  // Row 2: Avg profit, Avg ticket, Cost, Worst sale
   html += `<div class="kpi-grid">
     <div class="kpi"><div class="kpi-label">Avg profit / sale</div><div class="kpi-val">${fmt$(avgProfit)}</div><div class="kpi-sub">Median: ${fmt$(medianProfit)}</div></div>
     <div class="kpi"><div class="kpi-label">Avg ticket price</div><div class="kpi-val">${fmt$(rows.reduce((s,r)=>s+r._avgTicket,0)/totalTxns)}</div><div class="kpi-sub">${uniqueEvents} events</div></div>
     <div class="kpi"><div class="kpi-label">Cost basis</div><div class="kpi-val">${fmt$(totalCost)}</div><div class="kpi-sub">${uniqueVenues} venues &middot; ${uniqueCities} cities</div></div>
-    <div class="kpi"><div class="kpi-label">Worst single sale</div><div class="kpi-val kpi-neg">${fmt$(worstSale._totalProfit)}</div><div class="kpi-sub">${(worstSale['Event Name']||'').slice(0,30)}</div></div>
+    <div class="kpi"><div class="kpi-label">Worst single sale</div><div class="kpi-val kpi-neg">${fmt$(worstSale._totalProfit)}</div><div class="kpi-sub">${artistLink(worstSale['Event Name']||'',30)}</div></div>
   </div>`;
 
-  // Row 3: Quantity-focused KPIs
   html += `<div class="kpi-grid">
     <div class="kpi"><div class="kpi-label">Avg qty / sale</div><div class="kpi-val">${avgQtyPerSale.toFixed(1)}</div><div class="kpi-sub">Median: ${medianQty} &middot; Max: ${maxQtySale._qty}</div></div>
     <div class="kpi"><div class="kpi-label">Revenue / ticket</div><div class="kpi-val">${fmt$(revenuePerTicket)}</div><div class="kpi-sub">Cost: ${fmt$(costPerTicket)} / ticket</div></div>
     <div class="kpi"><div class="kpi-label">Profit / ticket</div><div class="kpi-val kpi-pos">${fmt$(profitPerTicket)}</div><div class="kpi-sub">${(profitPerTicket/revenuePerTicket*100).toFixed(1)}% margin per ticket</div></div>
-    <div class="kpi"><div class="kpi-label">Biggest single batch</div><div class="kpi-val">${maxQtySale._qty} tickets</div><div class="kpi-sub">${(maxQtySale['Event Name']||'').slice(0,30)}</div></div>
+    <div class="kpi"><div class="kpi-label">Biggest single batch</div><div class="kpi-val">${maxQtySale._qty} tickets</div><div class="kpi-sub">${artistLink(maxQtySale['Event Name']||'',30)}</div></div>
   </div>`;
 
-  // Row 4: Loss-focused KPIs
   html += `<div class="kpi-grid">
     <div class="kpi"><div class="kpi-label">Total losses</div><div class="kpi-val kpi-neg">${fmt$(totalLosses)}</div><div class="kpi-sub">${lossCount} losing sales (${lossRate.toFixed(1)}%)</div></div>
-    <div class="kpi"><div class="kpi-label">Biggest single loss</div><div class="kpi-val kpi-neg">${fmt$(biggestLoss)}</div><div class="kpi-sub">${(worstSale['Event Name']||'').slice(0,30)}</div></div>
+    <div class="kpi"><div class="kpi-label">Biggest single loss</div><div class="kpi-val kpi-neg">${fmt$(biggestLoss)}</div><div class="kpi-sub">${artistLink(worstSale['Event Name']||'',30)}</div></div>
     <div class="kpi"><div class="kpi-label">Avg loss per L</div><div class="kpi-val kpi-neg">${fmt$(avgLoss)}</div><div class="kpi-sub">Avg win: ${fmt$(avgWin)}</div></div>
     <div class="kpi"><div class="kpi-label">Streaks</div><div class="kpi-val">${maxWinStreak}W / ${maxLossStreak}L</div><div class="kpi-sub">Longest win & loss streaks</div></div>
   </div>`;
+
+  html += `<div class="section">Top 3 best days <span class="section-badge" style="color:var(--green);">by profit</span></div>`;
+  bestDays.forEach((day, i) => {
+    const fmtDate = day.dateObj.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+    const dayRoi = day.cost > 0 ? (day.profit/day.cost*100).toFixed(0) : '---';
+    const rankClass = 'day-rank-'+(i+1);
+    html += `<div class="day-card"><div class="day-card-header"><div><span class="day-card-date">${fmtDate}</span><span class="day-card-badge ${rankClass}">#${i+1}</span></div><span class="day-card-profit pos">${fmt$(day.profit)}</span></div>
+      <div class="day-card-meta">${day.txns} sale${day.txns>1?'s':''} &middot; ${day.tickets} ticket${day.tickets>1?'s':''} &middot; ${fmt$(day.revenue)} revenue &middot; ${dayRoi}% ROI &middot; ${day.wins}W/${day.losses}L</div>
+      <div class="day-card-events">Events: ${day.events.map(e => artistLink(e, 35)).join(', ')}</div></div>`;
+  });
+
+  if(worstDays[0] && worstDays[0].profit < 0) {
+    html += `<div class="section">Worst day <span class="section-badge" style="color:var(--red);">biggest loss</span></div>`;
+    const day = worstDays[0];
+    const fmtDate = day.dateObj.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+    const dayRoi = day.cost > 0 ? (day.profit/day.cost*100).toFixed(0) : '---';
+    html += `<div class="day-card" style="border-color:var(--red);"><div class="day-card-header"><div><span class="day-card-date">${fmtDate}</span></div><span class="day-card-profit neg">${fmt$(day.profit)}</span></div>
+      <div class="day-card-meta">${day.txns} sale${day.txns>1?'s':''} &middot; ${day.tickets} ticket${day.tickets>1?'s':''} &middot; ${fmt$(day.revenue)} revenue &middot; ${dayRoi}% ROI &middot; ${day.wins}W/${day.losses}L</div>
+      <div class="day-card-events">Events: ${day.events.map(e => artistLink(e, 35)).join(', ')}</div></div>`;
+  }
 
   html += `<div class="section">Key insights</div>`;
   html += `<div class="insight-grid">
     <div class="insight"><div class="insight-title">Best month</div><div class="insight-val pos">${bestMonth.month}</div><div class="insight-desc">${fmt$(bestMonth.profit)} profit (${bestMonth.roi.toFixed(0)}% ROI) &middot; ${bestMonth.tickets} tickets</div></div>
     <div class="insight"><div class="insight-title">Worst month</div><div class="insight-val neg">${worstMonth.month}</div><div class="insight-desc">${fmt$(worstMonth.profit)} profit &middot; ${worstMonth.tickets} tickets</div></div>
     <div class="insight"><div class="insight-title">Best selling day</div><div class="insight-val">${bestDow.name}</div><div class="insight-desc">${fmt$(bestDow.profit)} from ${bestDow.txns} sales (${bestDow.tickets} tickets)</div></div>
-    <div class="insight"><div class="insight-title">Top ROI event</div><div class="insight-val pos">${(() => { const e = events.filter(e=>e.cost>500).sort((a,b)=>(b.profit/b.cost)-(a.profit/a.cost))[0]; return e ? (e.name.length>28?e.name.slice(0,28)+'...':e.name) : 'N/A'; })()}</div><div class="insight-desc">${(() => { const e = events.filter(e=>e.cost>500).sort((a,b)=>(b.profit/b.cost)-(a.profit/a.cost))[0]; return e ? (e.profit/e.cost*100).toFixed(0)+'% ROI &middot; '+e.tickets+' tickets' : ''; })()}</div></div>
-    <div class="insight"><div class="insight-title">Most sold event</div><div class="insight-val">${(topByQty[0]?.name||'N/A').length>28?(topByQty[0]?.name||'N/A').slice(0,28)+'...':topByQty[0]?.name||'N/A'}</div><div class="insight-desc">${topByQty[0]?.tickets||0} tickets across ${topByQty[0]?.txns||0} sales &middot; ${fmt$(topByQty[0]?.profit||0)} profit</div></div>
-    <div class="insight"><div class="insight-title">Worst loss event</div><div class="insight-val neg">${(worstEvents[0]?.name||'None').length>28?(worstEvents[0]?.name||'None').slice(0,28)+'...':worstEvents[0]?.name||'None'}</div><div class="insight-desc">${worstEvents[0] ? fmt$(worstEvents[0].profit)+' lost across '+worstEvents[0].tickets+' tickets' : 'No losing events!'}</div></div>
+    <div class="insight"><div class="insight-title">Top ROI event</div><div class="insight-val pos">${(() => { const e = events.filter(e=>e.cost>500).sort((a,b)=>(b.profit/b.cost)-(a.profit/a.cost))[0]; return e ? artistLink(e.name,28) : 'N/A'; })()}</div><div class="insight-desc">${(() => { const e = events.filter(e=>e.cost>500).sort((a,b)=>(b.profit/b.cost)-(a.profit/a.cost))[0]; return e ? (e.profit/e.cost*100).toFixed(0)+'% ROI &middot; '+e.tickets+' tickets' : ''; })()}</div></div>
+    <div class="insight"><div class="insight-title">Most sold event</div><div class="insight-val">${topByQty[0] ? artistLink(topByQty[0].name,28) : 'N/A'}</div><div class="insight-desc">${topByQty[0]?.tickets||0} tickets across ${topByQty[0]?.txns||0} sales &middot; ${fmt$(topByQty[0]?.profit||0)} profit</div></div>
+    <div class="insight"><div class="insight-title">Worst loss event</div><div class="insight-val neg">${worstEvents[0] ? artistLink(worstEvents[0].name,28) : 'None'}</div><div class="insight-desc">${worstEvents[0] ? fmt$(worstEvents[0].profit)+' lost across '+worstEvents[0].tickets+' tickets' : 'No losing events!'}</div></div>
     <div class="insight"><div class="insight-title">Biggest loss platform</div><div class="insight-val neg">${lossByPlatform[0]?.name||'None'}</div><div class="insight-desc">${lossByPlatform[0] ? fmt$(lossByPlatform[0].totalLoss)+' from '+lossByPlatform[0].lossCount+' of '+lossByPlatform[0].txns+' sales' : 'No losses!'}</div></div>
     <div class="insight"><div class="insight-title">Sweet spot quantity</div><div class="insight-val">${(() => { let bestI=0,bestP=-Infinity; qtyProfitBySize.forEach((p,i)=>{ if(p>bestP && qtyDist[i]>5){bestP=p;bestI=i;} }); return qtyBinLabels[bestI]+' ticket(s)'; })()}</div><div class="insight-desc">${(() => { let bestI=0,bestP=-Infinity; qtyProfitBySize.forEach((p,i)=>{ if(p>bestP && qtyDist[i]>5){bestP=p;bestI=i;} }); return fmt$(bestP)+' avg profit/sale &middot; '+qtyDist[bestI]+' sales'; })()}</div></div>
   </div>`;
 
-  // === ARTIST / EVENT DRILL-DOWN ===
   html += `<div class="section">Artist / Event Drill-Down</div>`;
   html += `<div class="artist-select-wrap">
     <input type="text" class="artist-search" id="artistSearch" placeholder="Search for an artist or event..." autocomplete="off">
@@ -566,19 +634,15 @@ function analyzeSales(rows, fileName) {
   </div>
   <div class="artist-detail" id="artistDetail"></div>`;
 
-  // Pre-define chart constants needed by drill-down
   const dk = isDark(); const c = chartColors(); const b = baseOpts();
   const pieColors = ['#3266ad','#1D9E75','#7F77DD','#BA7517','#D85A30','#D4537E','#534AB7','#639922','#5DCAA5','#378ADD','#E24B4A','#85B7EB'];
 
-  // Store event data globally for the drill-down
   window._artistData = { events, eventGroups, rows, pieColors, isDark: dk, chartColors: c };
 
   html += `<div class="section">Monthly revenue vs. profit</div>`;
   html += `<div class="chart-wrap"><div class="legend"><span><span class="leg-dot" style="background:var(--accent);"></span>Revenue</span><span><span class="leg-dot" style="background:var(--green);"></span>Profit</span><span><span class="leg-dot" style="background:var(--amber);"></span>Cumulative profit</span></div><div class="chart-inner" style="height:300px;"><canvas id="chMonthly"></canvas></div></div>`;
-
   html += `<div class="section">Monthly ticket volume</div>`;
   html += `<div class="chart-wrap"><div class="legend"><span><span class="leg-dot" style="background:var(--purple);"></span>Tickets sold</span><span><span class="leg-dot" style="background:var(--coral);"></span>Avg qty / sale</span></div><div class="chart-inner" style="height:250px;"><canvas id="chMonthlyQty"></canvas></div></div>`;
-
   html += `<div class="section">Quarterly overview</div>`;
   html += `<div class="chart-wrap"><div class="legend"><span><span class="leg-dot" style="background:var(--blue-light);"></span>Revenue</span><span><span class="leg-dot" style="background:var(--accent);"></span>Profit</span></div><div class="chart-inner" style="height:260px;"><canvas id="chQ"></canvas></div></div>`;
 
@@ -587,7 +651,7 @@ function analyzeSales(rows, fileName) {
   topEvents.forEach((ev, i) => {
     const pctW = Math.max(Math.round(ev.profit / maxEP * 100), 2);
     const evRoi = ev.cost > 0 ? (ev.profit/ev.cost*100).toFixed(0) : '---';
-    html += `<div class="bar-row"><span class="bar-name" title="${ev.name}">${ev.name}</span><div class="bar-track"><div class="bar-fill" style="width:${pctW}%;background:${barColors[i%barColors.length]};">${pctW>30?fmt$(ev.profit):''}</div></div><span class="bar-val">${fmt$(ev.profit)} <span class="bar-roi">${evRoi}%</span></span></div>`;
+    html += `<div class="bar-row"><span class="bar-name">${artistLink(ev.name)}</span><div class="bar-track"><div class="bar-fill" style="width:${pctW}%;background:${barColors[i%barColors.length]};">${pctW>30?fmt$(ev.profit):''}</div></div><span class="bar-val">${fmt$(ev.profit)} <span class="bar-roi">${evRoi}%</span></span></div>`;
   });
   html += `</div>`;
 
@@ -595,17 +659,16 @@ function analyzeSales(rows, fileName) {
   const maxEQ = topByQty[0]?.tickets || 1;
   topByQty.forEach((ev, i) => {
     const pctW = Math.max(Math.round(ev.tickets / maxEQ * 100), 2);
-    html += `<div class="bar-row"><span class="bar-name" title="${ev.name}">${ev.name}</span><div class="bar-track"><div class="bar-fill" style="width:${pctW}%;background:${barColors[i%barColors.length]};">${pctW>25?ev.tickets+' tix':''}</div></div><span class="bar-val">${ev.tickets} tix <span class="bar-roi">${ev.txns} sales</span></span></div>`;
+    html += `<div class="bar-row"><span class="bar-name">${artistLink(ev.name)}</span><div class="bar-track"><div class="bar-fill" style="width:${pctW}%;background:${barColors[i%barColors.length]};">${pctW>25?ev.tickets+' tix':''}</div></div><span class="bar-val">${ev.tickets} tix <span class="bar-roi">${ev.txns} sales</span></span></div>`;
   });
   html += `</div>`;
 
   if(worstEvents.length > 0) {
     html += `<div class="section">Biggest losses <span class="section-badge" style="color:var(--red);">Watch list</span></div><div class="loss-list">`;
-    worstEvents.forEach(ev => { html += `<div class="loss-item"><span>${ev.name} <span style="color:var(--hint);font-size:11px;">(${ev.tickets} tix)</span></span><span class="neg">${fmt$(ev.profit)}</span></div>`; });
+    worstEvents.forEach(ev => { html += `<div class="loss-item"><span>${artistLink(ev.name)} <span style="color:var(--hint);font-size:11px;">(${ev.tickets} tix)</span></span><span class="neg">${fmt$(ev.profit)}</span></div>`; });
     html += `</div>`;
   }
 
-  // Platform pie charts section
   html += `<div class="section">Selling outlets overview</div>`;
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
     <div class="chart-wrap" style="margin-bottom:0;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;text-align:center;">Revenue by outlet</div><div class="chart-inner" style="height:260px;"><canvas id="chPlatRevPie"></canvas></div></div>
@@ -626,15 +689,11 @@ function analyzeSales(rows, fileName) {
   });
   html += `</tbody></table></div>`;
 
-  // Quantity analytics section
   html += `<div class="section">Quantity distribution <span class="section-badge">tickets per sale</span></div>`;
   html += `<div class="chart-wrap"><div class="chart-inner" style="height:240px;"><canvas id="chQtyDist"></canvas></div></div>`;
-
   html += `<div class="section">Avg profit by sale size</div>`;
   html += `<div class="chart-wrap"><div class="chart-inner" style="height:240px;"><canvas id="chQtyProfit"></canvas></div></div>`;
-
   html += `<div class="section">Profit by city <span class="section-badge">Top 12</span></div><div class="chart-wrap"><div class="chart-inner" style="height:280px;"><canvas id="chCity"></canvas></div></div>`;
-
   html += `<div class="section">Profit by state <span class="section-badge">Top 15</span></div>`;
   html += `<div class="chart-wrap"><div class="chart-inner" style="height:280px;"><canvas id="chState"></canvas></div></div>`;
 
@@ -643,12 +702,9 @@ function analyzeSales(rows, fileName) {
   html += `</tbody></table></div>`;
 
   html += `<div class="section">Day of week</div><div class="chart-wrap"><div class="chart-inner" style="height:220px;"><canvas id="chDow"></canvas></div></div>`;
-
   html += `<div class="section">Profit distribution per sale</div><div class="chart-wrap"><div class="chart-inner" style="height:220px;"><canvas id="chDist"></canvas></div></div>`;
-
   html += `<div class="section">Margin distribution</div><div class="chart-wrap"><div class="chart-inner" style="height:220px;"><canvas id="chMarginDist"></canvas></div></div>`;
 
-  // Fulfillment status
   html += `<div class="section">Fulfillment status</div>`;
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
     <div class="chart-wrap" style="margin-bottom:0;"><div class="chart-inner" style="height:240px;"><canvas id="chFulfill"></canvas></div></div>
@@ -663,59 +719,34 @@ function analyzeSales(rows, fileName) {
 
   const pieOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{color:c.text,font:{size:11},padding:10,usePointStyle:true,pointStyle:'circle'}},tooltip:{callbacks:{label:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return ctx.label+': '+fmt$(ctx.raw)+' ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}},cutout:'40%'};
 
-  new Chart($('#chMonthly'), {
-    data:{labels:monthly.map(m=>m.month),datasets:[
-      {type:'bar',label:'Revenue',data:monthly.map(m=>m.revenue),backgroundColor:dk?'#378ADD':'#3266ad',order:2},
-      {type:'bar',label:'Profit',data:monthly.map(m=>m.profit),backgroundColor:monthly.map(m=>m.profit>=0?(dk?'#5DCAA5':'#1D9E75'):'#E24B4A'),order:3},
-      {type:'line',label:'Cum. Profit',data:monthly.map(m=>m.cumProfit),borderColor:'#BA7517',backgroundColor:'transparent',borderWidth:2,pointRadius:0,tension:0.3,yAxisID:'y2',order:1}
-    ]},
-    options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,maxRotation:45,autoSkip:true,maxTicksLimit:14}},y2:{position:'right',ticks:{color:c.text,callback:fmtK},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt$(Math.round(ctx.raw))}}}}
-  });
-
-  new Chart($('#chMonthlyQty'), {
-    data:{labels:monthly.map(m=>m.month),datasets:[
-      {type:'bar',label:'Tickets',data:monthly.map(m=>m.tickets),backgroundColor:dk?'#AFA9EC':'#7F77DD',order:2,yAxisID:'y'},
-      {type:'line',label:'Avg Qty/Sale',data:monthly.map(m=>m.avgQty),borderColor:'#D85A30',backgroundColor:'transparent',borderWidth:2,pointRadius:3,pointBackgroundColor:'#D85A30',tension:0.3,yAxisID:'y2',order:1}
-    ]},
-    options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,maxRotation:45,autoSkip:true,maxTicksLimit:14}},y:{...b.scales.y,ticks:{...b.scales.y.ticks,callback:v=>v}},y2:{position:'right',ticks:{color:c.text,callback:v=>v.toFixed(1)},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+(ctx.datasetIndex===0?ctx.raw+' tickets':ctx.raw.toFixed(1)+' avg')}}}}
-  });
-
+  new Chart($('#chMonthly'), { data:{labels:monthly.map(m=>m.month),datasets:[{type:'bar',label:'Revenue',data:monthly.map(m=>m.revenue),backgroundColor:dk?'#378ADD':'#3266ad',order:2},{type:'bar',label:'Profit',data:monthly.map(m=>m.profit),backgroundColor:monthly.map(m=>m.profit>=0?(dk?'#5DCAA5':'#1D9E75'):'#E24B4A'),order:3},{type:'line',label:'Cum. Profit',data:monthly.map(m=>m.cumProfit),borderColor:'#BA7517',backgroundColor:'transparent',borderWidth:2,pointRadius:0,tension:0.3,yAxisID:'y2',order:1}]}, options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,maxRotation:45,autoSkip:true,maxTicksLimit:14}},y2:{position:'right',ticks:{color:c.text,callback:fmtK},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt$(Math.round(ctx.raw))}}}} });
+  new Chart($('#chMonthlyQty'), { data:{labels:monthly.map(m=>m.month),datasets:[{type:'bar',label:'Tickets',data:monthly.map(m=>m.tickets),backgroundColor:dk?'#AFA9EC':'#7F77DD',order:2,yAxisID:'y'},{type:'line',label:'Avg Qty/Sale',data:monthly.map(m=>m.avgQty),borderColor:'#D85A30',backgroundColor:'transparent',borderWidth:2,pointRadius:3,pointBackgroundColor:'#D85A30',tension:0.3,yAxisID:'y2',order:1}]}, options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,maxRotation:45,autoSkip:true,maxTicksLimit:14}},y:{...b.scales.y,ticks:{...b.scales.y.ticks,callback:v=>v}},y2:{position:'right',ticks:{color:c.text,callback:v=>v.toFixed(1)},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+(ctx.datasetIndex===0?ctx.raw+' tickets':ctx.raw.toFixed(1)+' avg')}}}} });
   new Chart($('#chQ'), { type:'bar', data:{labels:quarterly.map(q=>q.q),datasets:[{label:'Revenue',data:quarterly.map(q=>q.revenue),backgroundColor:'#85B7EB'},{label:'Profit',data:quarterly.map(q=>q.profit),backgroundColor:dk?'#378ADD':'#3266ad'}]}, options:{...b,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt$(Math.round(ctx.raw))}}}} });
 
   const posPlats = platforms.filter(p => p.profit > 0);
   new Chart($('#chPlat'), { type:'bar', data:{labels:posPlats.map(p=>p.name),datasets:[{label:'Profit',data:posPlats.map(p=>p.profit),backgroundColor:dk?'#378ADD':'#3266ad'},{label:'Revenue',data:posPlats.map(p=>p.revenue),backgroundColor:'#85B7EB'}]}, options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt$(Math.round(ctx.raw))}}},scales:{x:{ticks:{color:c.text,callback:fmtK},grid:{color:c.grid}},y:{ticks:{color:c.text},grid:{display:false}}}} });
 
-  // Pie charts for platforms
   const platNames = platforms.map(p=>p.name);
   new Chart($('#chPlatRevPie'), { type:'doughnut', data:{labels:platNames,datasets:[{data:platforms.map(p=>Math.max(p.revenue,0)),backgroundColor:pieColors}]}, options:pieOpts });
   new Chart($('#chPlatProfPie'), { type:'doughnut', data:{labels:platforms.filter(p=>p.profit>0).map(p=>p.name),datasets:[{data:platforms.filter(p=>p.profit>0).map(p=>p.profit),backgroundColor:pieColors}]}, options:pieOpts });
   new Chart($('#chPlatTxnPie'), { type:'doughnut', data:{labels:platNames,datasets:[{data:platforms.map(p=>p.txns),backgroundColor:pieColors}]}, options:{...pieOpts,plugins:{...pieOpts.plugins,tooltip:{callbacks:{label:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return ctx.label+': '+ctx.raw+' sales ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}}} });
   new Chart($('#chPlatTixPie'), { type:'doughnut', data:{labels:platNames,datasets:[{data:platforms.map(p=>p.tickets),backgroundColor:pieColors}]}, options:{...pieOpts,plugins:{...pieOpts.plugins,tooltip:{callbacks:{label:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return ctx.label+': '+ctx.raw+' tickets ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}}} });
 
-  // Quantity distribution
   new Chart($('#chQtyDist'), { type:'bar', data:{labels:qtyBinLabels,datasets:[{data:qtyDist,backgroundColor:dk?'#AFA9EC':'#7F77DD'}]}, options:{...b,scales:{...b.scales,y:{...b.scales.y,ticks:{...b.scales.y.ticks,callback:v=>v}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' sales'}}}} });
-
   new Chart($('#chQtyProfit'), { type:'bar', data:{labels:qtyBinLabels,datasets:[{label:'Avg Profit',data:qtyProfitBySize,backgroundColor:qtyProfitBySize.map(v=>v>=0?(dk?'#5DCAA5':'#1D9E75'):'#E24B4A')}]}, options:{...b,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt$(Math.round(ctx.raw))+' avg profit'}}}} });
-
   new Chart($('#chCity'), { type:'bar', data:{labels:cities.map(c=>c.name),datasets:[{data:cities.map(c=>c.profit),backgroundColor:dk?'#AFA9EC':'#7F77DD'}]}, options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,maxRotation:45}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt$(Math.round(ctx.raw))+' profit'}}}} });
-
   new Chart($('#chState'), { type:'bar', data:{labels:states.map(s=>s.name),datasets:[{label:'Profit',data:states.map(s=>s.profit),backgroundColor:dk?'#5DCAA5':'#1D9E75'},{label:'Revenue',data:states.map(s=>s.revenue),backgroundColor:'#85B7EB'}]}, options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,maxRotation:45}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt$(Math.round(ctx.raw))}}}} });
 
   const maxDow = Math.max(...dow.map(d=>d.profit));
   new Chart($('#chDow'), { type:'bar', data:{labels:dow.map(d=>d.name),datasets:[{data:dow.map(d=>d.profit),backgroundColor:dow.map(d=>d.profit>maxDow*0.85?(dk?'#5DCAA5':'#1D9E75'):(dk?'#5DCAA5aa':'#5DCAA5'))}]}, options:{...b,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt$(Math.round(ctx.raw))+' ('+dow[ctx.dataIndex].tickets+' tix)'}}}} });
   new Chart($('#chDist'), { type:'bar', data:{labels:binLabels,datasets:[{data:dist,backgroundColor:dist.map((v,i)=>i<5?'#E24B4A':i===5?(dk?'#5DCAA5':'#1D9E75'):(dk?'#378ADD':'#3266ad'))}]}, options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,font:{size:10}}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' sales'}}}} });
-
   new Chart($('#chMarginDist'), { type:'bar', data:{labels:marginLabels,datasets:[{data:marginDist,backgroundColor:marginDist.map((v,i)=>i<3?'#E24B4A':i===3?(dk?'#5DCAA5':'#1D9E75'):(dk?'#378ADD':'#3266ad'))}]}, options:{...b,scales:{...b.scales,x:{...b.scales.x,ticks:{...b.scales.x.ticks,font:{size:10}}},y:{...b.scales.y,ticks:{...b.scales.y.ticks,callback:v=>v}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' sales'}}}} });
-
   new Chart($('#chFulfill'), { type:'doughnut', data:{labels:fulfillments.map(f=>f.name),datasets:[{data:fulfillments.map(f=>f.count),backgroundColor:pieColors}]}, options:{...pieOpts,plugins:{...pieOpts.plugins,tooltip:{callbacks:{label:ctx=>ctx.label+': '+ctx.raw+' sales'}}}} });
 
-  // === ARTIST DRILL-DOWN LOGIC ===
   const artistSearch = document.getElementById('artistSearch');
   const artistDropdown = document.getElementById('artistDropdown');
   const artistDetail = document.getElementById('artistDetail');
   let artistCharts = [];
-
-  // Sort events by # of transactions for dropdown
   const sortedEvents = [...events].sort((a,b) => b.txns - a.txns);
 
   function renderDropdown(filter) {
@@ -736,7 +767,6 @@ function analyzeSales(rows, fileName) {
   artistSearch.addEventListener('focus', () => renderDropdown(artistSearch.value));
   artistSearch.addEventListener('input', () => renderDropdown(artistSearch.value));
   document.addEventListener('click', e => { if(!e.target.closest('.artist-select-wrap')) artistDropdown.classList.remove('open'); });
-
   artistDropdown.addEventListener('click', e => {
     const opt = e.target.closest('.artist-opt');
     if(!opt || !opt.dataset.event) return;
@@ -746,14 +776,12 @@ function analyzeSales(rows, fileName) {
     renderArtistDetail(evName);
   });
 
+  window._renderArtistDetail = renderArtistDetail;
   function renderArtistDetail(evName) {
     const sales = (eventGroups[evName] || []).slice().sort((a,b) => a._invoiceDate - b._invoiceDate);
     if(sales.length === 0) return;
-
-    // Destroy old charts
     artistCharts.forEach(ch => ch.destroy());
     artistCharts = [];
-
     const tRev = sales.reduce((s,r) => s+r._totalSale, 0);
     const tCost = sales.reduce((s,r) => s+r._totalCost, 0);
     const tProfit = sales.reduce((s,r) => s+r._totalProfit, 0);
@@ -767,21 +795,15 @@ function analyzeSales(rows, fileName) {
     const bestArtSale = sales.reduce((b,r) => r._totalProfit > b._totalProfit ? r : b, sales[0]);
     const worstArtSale = sales.reduce((w,r) => r._totalProfit < w._totalProfit ? r : w, sales[0]);
     const avgMargin = sales.reduce((s,r) => s+r._margin, 0) / sales.length;
-
-    // Platform breakdown for this artist
     const artPlatGroups = groupBy(sales, r => r['Customer'] || 'Unknown');
     const artPlats = Object.entries(artPlatGroups).map(([name, g]) => ({
       name, profit:g.reduce((s,r)=>s+r._totalProfit,0), revenue:g.reduce((s,r)=>s+r._totalSale,0),
       txns:g.length, tickets:g.reduce((s,r)=>s+r._qty,0)
     })).sort((a,b) => b.profit - a.profit);
-
-    // Venue breakdown
     const artVenueGroups = groupBy(sales, r => r['Venue'] || 'Unknown');
     const artVenues = Object.entries(artVenueGroups).map(([name, g]) => ({
       name, profit:g.reduce((s,r)=>s+r._totalProfit,0), tickets:g.reduce((s,r)=>s+r._qty,0), txns:g.length
     })).sort((a,b) => b.profit - a.profit);
-
-    // Monthly breakdown for this artist
     const artMonthGroups = groupBy(sales, r => { const d = r._invoiceDate; return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); });
     const artMonthLabels = Object.keys(artMonthGroups).sort();
     let artCum = 0;
@@ -789,32 +811,24 @@ function analyzeSales(rows, fileName) {
       const g = artMonthGroups[m]; const p = g.reduce((s,r)=>s+r._totalProfit,0); artCum += p;
       return { month: m, profit: p, revenue: g.reduce((s,r)=>s+r._totalSale,0), tickets: g.reduce((s,r)=>s+r._qty,0), cumProfit: artCum };
     });
-
     let h = '';
     h += `<div class="artist-detail-header"><h3>${evName}</h3><button class="artist-close" onclick="document.getElementById('artistDetail').classList.remove('visible');document.getElementById('artistSearch').value='';">Close</button></div>`;
-
-    // Artist KPIs
     h += `<div class="kpi-grid">
       <div class="kpi"><div class="kpi-label">Total profit</div><div class="kpi-val ${tProfit>=0?'kpi-pos':'kpi-neg'}">${fmt$(tProfit)}</div><div class="kpi-sub">${artRoi.toFixed(1)}% ROI</div></div>
       <div class="kpi"><div class="kpi-label">Revenue</div><div class="kpi-val">${fmt$(tRev)}</div><div class="kpi-sub">Cost: ${fmt$(tCost)}</div></div>
       <div class="kpi"><div class="kpi-label">Tickets sold</div><div class="kpi-val">${tTix}</div><div class="kpi-sub">${sales.length} transactions</div></div>
       <div class="kpi"><div class="kpi-label">Win rate</div><div class="kpi-val">${artWinRate.toFixed(0)}%</div><div class="kpi-sub">${tWins}W / ${tLosses}L</div></div>
     </div>`;
-
     h += `<div class="kpi-grid">
       <div class="kpi"><div class="kpi-label">Best sale</div><div class="kpi-val kpi-pos">${fmt$(bestArtSale._totalProfit)}</div><div class="kpi-sub">${bestArtSale._qty} tix @ ${fmt$(bestArtSale._avgTicket)}/ea</div></div>
       <div class="kpi"><div class="kpi-label">Worst sale</div><div class="kpi-val kpi-neg">${fmt$(worstArtSale._totalProfit)}</div><div class="kpi-sub">${worstArtSale._qty} tix @ ${fmt$(worstArtSale._avgTicket)}/ea</div></div>
       <div class="kpi"><div class="kpi-label">Total losses</div><div class="kpi-val kpi-neg">${fmt$(tLossAmt)}</div><div class="kpi-sub">Total wins: ${fmt$(tWinAmt)}</div></div>
       <div class="kpi"><div class="kpi-label">Avg margin</div><div class="kpi-val">${(avgMargin*100).toFixed(1)}%</div><div class="kpi-sub">Across all sales</div></div>
     </div>`;
-
-    // Monthly profit chart for this artist
     if(artMonthly.length > 1) {
       h += `<div style="font-size:14px;font-weight:600;margin:16px 0 8px;">Monthly profit trend</div>`;
       h += `<div class="chart-wrap" style="margin-bottom:16px;"><div class="chart-inner" style="height:200px;"><canvas id="chArtMonthly"></canvas></div></div>`;
     }
-
-    // Platform pie for this artist
     if(artPlats.length > 1) {
       h += `<div style="font-size:14px;font-weight:600;margin:16px 0 8px;">Outlet breakdown</div>`;
       h += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
@@ -822,16 +836,12 @@ function analyzeSales(rows, fileName) {
         <div class="chart-wrap" style="margin-bottom:0;"><div style="font-size:12px;text-align:center;margin-bottom:4px;color:var(--muted);">By tickets</div><div class="chart-inner" style="height:200px;"><canvas id="chArtPlatTix"></canvas></div></div>
       </div>`;
     }
-
-    // Venue breakdown table
     if(artVenues.length > 1) {
       h += `<div style="font-size:14px;font-weight:600;margin:16px 0 8px;">Venue breakdown</div>`;
       h += `<div class="table-wrap"><table class="data"><thead><tr><th>Venue</th><th>Profit</th><th>Tickets</th><th>Sales</th></tr></thead><tbody>`;
       artVenues.forEach(v => { h += `<tr><td>${v.name}</td><td class="${v.profit>=0?'pos':'neg'}">${fmt$(v.profit)}</td><td>${v.tickets}</td><td>${v.txns}</td></tr>`; });
       h += `</tbody></table></div>`;
     }
-
-    // Full sales table for this artist
     h += `<div style="font-size:14px;font-weight:600;margin:16px 0 8px;">All transactions</div>`;
     h += `<div class="table-wrap"><table class="data"><thead><tr><th>Date</th><th>Venue</th><th>Sec / Row</th><th>Qty</th><th>Cost</th><th>Sale</th><th>Profit</th><th>Margin</th><th>Platform</th></tr></thead><tbody>`;
     sales.forEach(r => {
@@ -840,15 +850,11 @@ function analyzeSales(rows, fileName) {
       h += `<tr><td>${d}</td><td>${(r['Venue']||'').length>25?(r['Venue']||'').slice(0,25)+'...':r['Venue']||''}</td><td>${sec}</td><td>${r._qty}</td><td>${fmt$(r._totalCost)}</td><td>${fmt$(r._totalSale)}</td><td class="${r._totalProfit>=0?'pos':'neg'}">${fmt$(r._totalProfit)}</td><td>${(r._margin*100).toFixed(0)}%</td><td>${r['Customer']||''}</td></tr>`;
     });
     h += `</tbody></table></div>`;
-
     artistDetail.innerHTML = h;
     artistDetail.classList.add('visible');
     artistDetail.scrollIntoView({ behavior:'smooth', block:'start' });
-
-    // Render artist-specific charts
     const artC = chartColors();
     const artB = baseOpts();
-
     if(artMonthly.length > 1) {
       const ch1 = new Chart(document.getElementById('chArtMonthly'), {
         data:{labels:artMonthly.map(m=>m.month),datasets:[
@@ -859,7 +865,6 @@ function analyzeSales(rows, fileName) {
       });
       artistCharts.push(ch1);
     }
-
     if(artPlats.length > 1) {
       const artPieOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{color:artC.text,font:{size:10},padding:8,usePointStyle:true,pointStyle:'circle'}},tooltip:{callbacks:{label:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return ctx.label+': '+fmt$(ctx.raw)+' ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}},cutout:'40%'};
       const ch2 = new Chart(document.getElementById('chArtPlatRev'), {

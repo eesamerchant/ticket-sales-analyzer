@@ -490,6 +490,8 @@ function analyzeSales(rows, fileName) {
   }));
   const bestDays = [...days].sort((a,b) => b.profit - a.profit).slice(0, 3);
   const worstDays = [...days].sort((a,b) => a.profit - b.profit).slice(0, 1);
+  const bestDaysBySales = [...days].sort((a,b) => b.revenue - a.revenue).slice(0, 3);
+  const worstDaysBySales = [...days].sort((a,b) => a.revenue - b.revenue).slice(0, 1);
 
   const monthKey = r => { const d = r._invoiceDate; return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); };
   const monthGroups = groupBy(rows, monthKey);
@@ -612,6 +614,26 @@ function analyzeSales(rows, fileName) {
     const dayRoi = day.cost > 0 ? (day.profit/day.cost*100).toFixed(0) : '---';
     html += `<div class="day-card" style="border-color:var(--red);"><div class="day-card-header"><div><span class="day-card-date">${fmtDate}</span></div><span class="day-card-profit neg">${fmt$(day.profit)}</span></div>
       <div class="day-card-meta">${day.txns} sale${day.txns>1?'s':''} &middot; ${day.tickets} ticket${day.tickets>1?'s':''} &middot; ${fmt$(day.revenue)} revenue &middot; ${dayRoi}% ROI &middot; ${day.wins}W/${day.losses}L</div>
+      <div class="day-card-events">Events: ${day.events.map(e => artistLink(e, 35)).join(', ')}</div></div>`;
+  }
+
+  html += `<div class="section">Top 3 best days by sales <span class="section-badge" style="color:var(--accent);">by revenue</span></div>`;
+  bestDaysBySales.forEach((day, i) => {
+    const fmtDate = day.dateObj.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+    const dayRoi = day.cost > 0 ? (day.profit/day.cost*100).toFixed(0) : '---';
+    const rankClass = 'day-rank-'+(i+1);
+    html += `<div class="day-card"><div class="day-card-header"><div><span class="day-card-date">${fmtDate}</span><span class="day-card-badge ${rankClass}">#${i+1}</span></div><span class="day-card-profit" style="color:var(--accent);">${fmt$(day.revenue)}</span></div>
+      <div class="day-card-meta">${day.txns} sale${day.txns>1?'s':''} &middot; ${day.tickets} ticket${day.tickets>1?'s':''} &middot; <span class="${day.profit>=0?'pos':'neg'}">${fmt$(day.profit)} profit</span> &middot; ${dayRoi}% ROI &middot; ${day.wins}W/${day.losses}L</div>
+      <div class="day-card-events">Events: ${day.events.map(e => artistLink(e, 35)).join(', ')}</div></div>`;
+  });
+
+  if(worstDaysBySales[0]) {
+    html += `<div class="section">Worst day by sales <span class="section-badge" style="color:var(--red);">lowest revenue</span></div>`;
+    const day = worstDaysBySales[0];
+    const fmtDate = day.dateObj.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+    const dayRoi = day.cost > 0 ? (day.profit/day.cost*100).toFixed(0) : '---';
+    html += `<div class="day-card" style="border-color:var(--red);"><div class="day-card-header"><div><span class="day-card-date">${fmtDate}</span></div><span class="day-card-profit neg">${fmt$(day.revenue)}</span></div>
+      <div class="day-card-meta">${day.txns} sale${day.txns>1?'s':''} &middot; ${day.tickets} ticket${day.tickets>1?'s':''} &middot; <span class="${day.profit>=0?'pos':'neg'}">${fmt$(day.profit)} profit</span> &middot; ${dayRoi}% ROI &middot; ${day.wins}W/${day.losses}L</div>
       <div class="day-card-events">Events: ${day.events.map(e => artistLink(e, 35)).join(', ')}</div></div>`;
   }
 

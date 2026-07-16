@@ -138,6 +138,23 @@ table.data tr:hover td{background:var(--surface)}
 .cal-month-cell-sub{font-size:11px;color:var(--muted)}
 .cal-year-nav{display:flex;align-items:center;gap:12px}
 .cal-year-label{font-size:16px;font-weight:600;min-width:60px;text-align:center}
+.cal-year-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.cal-year-cell{border-radius:8px;padding:16px;text-align:center;min-height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;transition:opacity 0.15s}
+.cal-year-cell:hover{opacity:0.85}
+.cal-year-cell-name{font-size:15px;font-weight:700}
+.cal-year-cell-val{font-size:18px;font-weight:700}
+.cal-year-cell-sub{font-size:11px;color:var(--muted)}
+.ytd-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+@media(max-width:700px){.ytd-grid{grid-template-columns:repeat(2,1fr)}}
+.ytd-card{background:linear-gradient(135deg,var(--card),var(--surface));border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.ytd-card .kpi-val{font-size:20px}
+.top10-wrap{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px}
+.top10-tabs{display:flex;gap:6px;margin-bottom:16px}
+.top10-tab-group{display:flex;background:var(--surface);border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.top10-tab{padding:6px 14px;font-size:12px;font-weight:500;cursor:pointer;border:none;background:transparent;color:var(--muted);font-family:inherit;transition:all 0.15s}
+.top10-tab.active{background:var(--accent);color:#fff}
+.top10-tab.active-green{background:var(--green);color:#fff}
+.top10-tab.active-red{background:var(--red);color:#fff}
 </style>
 </head>
 <body>
@@ -596,6 +613,29 @@ function analyzeSales(rows, fileName) {
   const worstMonth = monthly.reduce((w,m) => m.profit < w.profit ? m : w, monthly[0]);
   const bestDow = dow.reduce((b,d) => d.profit > b.profit ? d : b, dow[0]);
 
+
+  // YTD calculations
+  const ytdYear = Math.max(...rows.map(r => r._invoiceDate.getFullYear()));
+  const ytdRows = rows.filter(r => r._invoiceDate.getFullYear() === ytdYear);
+  const ytdRevenue = ytdRows.reduce((s,r) => s+r._totalSale, 0);
+  const ytdCost = ytdRows.reduce((s,r) => s+r._totalCost, 0);
+  const ytdProfit = ytdRows.reduce((s,r) => s+r._totalProfit, 0);
+  const ytdTickets = ytdRows.reduce((s,r) => s+r._qty, 0);
+  const ytdTxns = ytdRows.length;
+  const ytdWins = ytdRows.filter(r => r._totalProfit > 0).length;
+  const ytdLosses = ytdRows.filter(r => r._totalProfit < 0).length;
+  const ytdWinRate = ytdTxns > 0 ? (ytdWins / ytdTxns * 100) : 0;
+  const ytdRoi = ytdCost > 0 ? (ytdProfit / ytdCost * 100) : 0;
+  const ytdEvents = new Set(ytdRows.map(r => r['Event Name'])).size;
+  const ytdLossAmt = ytdRows.filter(r => r._totalProfit < 0).reduce((s,r) => s+r._totalProfit, 0);
+  const ytdAvgProfit = ytdTxns > 0 ? ytdProfit / ytdTxns : 0;
+
+  // Top 10 sales data
+  const top10ProfitPlus = [...rows].sort((a,b) => b._totalProfit - a._totalProfit).slice(0, 10);
+  const top10ProfitMinus = [...rows].sort((a,b) => a._totalProfit - b._totalProfit).slice(0, 10);
+  const top10RevPlus = [...rows].sort((a,b) => b._totalSale - a._totalSale).slice(0, 10);
+  const top10RevMinus = [...rows].sort((a,b) => a._totalSale - b._totalSale).slice(0, 10);
+
   let html = '';
   html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px;">
     <div><h2 style="font-size:20px;font-weight:600;">Sales Dashboard <span class="mode-badge mode-sales">SALES</span></h2>
@@ -629,6 +669,48 @@ function analyzeSales(rows, fileName) {
     <div class="kpi"><div class="kpi-label">Avg loss per L</div><div class="kpi-val kpi-neg">${fmt$(avgLoss)}</div><div class="kpi-sub">Avg win: ${fmt$(avgWin)}</div></div>
     <div class="kpi"><div class="kpi-label">Streaks</div><div class="kpi-val">${maxWinStreak}W / ${maxLossStreak}L</div><div class="kpi-sub">Longest win & loss streaks</div></div>
   </div>`;
+
+
+  // --- YTD Stats ---
+  html += `<div class="section">YTD Stats <span class="section-badge">${ytdYear}</span></div>`;
+  html += `<div class="ytd-grid">
+    <div class="ytd-card"><div class="kpi-label">YTD Revenue</div><div class="kpi-val">${fmt$(ytdRevenue)}</div><div class="kpi-sub">${ytdTickets.toLocaleString()} tickets sold</div></div>
+    <div class="ytd-card"><div class="kpi-label">YTD Profit</div><div class="kpi-val ${ytdProfit>=0?'kpi-pos':'kpi-neg'}">${fmt$(ytdProfit)}</div><div class="kpi-sub">${ytdRoi.toFixed(1)}% ROI</div></div>
+    <div class="ytd-card"><div class="kpi-label">YTD Win Rate</div><div class="kpi-val">${ytdWinRate.toFixed(1)}%</div><div class="kpi-sub">${ytdWins}W / ${ytdLosses}L</div></div>
+    <div class="ytd-card"><div class="kpi-label">YTD Avg / Sale</div><div class="kpi-val">${fmt$(ytdAvgProfit)}</div><div class="kpi-sub">${ytdTxns} sales &middot; ${ytdEvents} events</div></div>
+  </div>`;
+  html += `<div class="ytd-grid">
+    <div class="ytd-card"><div class="kpi-label">YTD Cost Basis</div><div class="kpi-val">${fmt$(ytdCost)}</div><div class="kpi-sub">Invested this year</div></div>
+    <div class="ytd-card"><div class="kpi-label">YTD Losses</div><div class="kpi-val kpi-neg">${fmt$(ytdLossAmt)}</div><div class="kpi-sub">${ytdLosses} losing sale${ytdLosses!==1?'s':''}</div></div>
+    <div class="ytd-card"><div class="kpi-label">YTD Profit / Ticket</div><div class="kpi-val ${ytdProfit>=0?'kpi-pos':'kpi-neg'}">${fmt$(ytdTickets>0?ytdProfit/ytdTickets:0)}</div><div class="kpi-sub">${ytdTickets > 0 ? fmt$(ytdRevenue/ytdTickets) : '$0'} rev / ticket</div></div>
+    <div class="ytd-card"><div class="kpi-label">YTD Events</div><div class="kpi-val">${ytdEvents}</div><div class="kpi-sub">${ytdTxns} transactions</div></div>
+  </div>`;
+
+  html += `<div class="section">Key insights</div>`;
+  html += `<div class="insight-grid">
+    <div class="insight"><div class="insight-title">Best month</div><div class="insight-val pos">${bestMonth.month}</div><div class="insight-desc">${fmt$(bestMonth.profit)} profit (${bestMonth.roi.toFixed(0)}% ROI) &middot; ${bestMonth.tickets} tickets</div></div>
+    <div class="insight"><div class="insight-title">Worst month</div><div class="insight-val neg">${worstMonth.month}</div><div class="insight-desc">${fmt$(worstMonth.profit)} profit &middot; ${worstMonth.tickets} tickets</div></div>
+    <div class="insight"><div class="insight-title">Best selling day</div><div class="insight-val">${bestDow.name}</div><div class="insight-desc">${fmt$(bestDow.profit)} from ${bestDow.txns} sales (${bestDow.tickets} tickets)</div></div>
+    <div class="insight"><div class="insight-title">Top ROI event</div><div class="insight-val pos">${(() => { const e = events.filter(e=>e.cost>500).sort((a,b)=>(b.profit/b.cost)-(a.profit/a.cost))[0]; return e ? artistLink(e.name,28) : 'N/A'; })()}</div><div class="insight-desc">${(() => { const e = events.filter(e=>e.cost>500).sort((a,b)=>(b.profit/b.cost)-(a.profit/a.cost))[0]; return e ? (e.profit/e.cost*100).toFixed(0)+'% ROI &middot; '+e.tickets+' tickets' : ''; })()}</div></div>
+    <div class="insight"><div class="insight-title">Most sold event</div><div class="insight-val">${topByQty[0] ? artistLink(topByQty[0].name,28) : 'N/A'}</div><div class="insight-desc">${topByQty[0]?.tickets||0} tickets across ${topByQty[0]?.txns||0} sales &middot; ${fmt$(topByQty[0]?.profit||0)} profit</div></div>
+    <div class="insight"><div class="insight-title">Worst loss event</div><div class="insight-val neg">${worstEvents[0] ? artistLink(worstEvents[0].name,28) : 'None'}</div><div class="insight-desc">${worstEvents[0] ? fmt$(worstEvents[0].profit)+' lost across '+worstEvents[0].tickets+' tickets' : 'No losing events!'}</div></div>
+    <div class="insight"><div class="insight-title">Biggest loss platform</div><div class="insight-val neg">${lossByPlatform[0]?.name||'None'}</div><div class="insight-desc">${lossByPlatform[0] ? fmt$(lossByPlatform[0].totalLoss)+' from '+lossByPlatform[0].lossCount+' of '+lossByPlatform[0].txns+' sales' : 'No losses!'}</div></div>
+    <div class="insight"><div class="insight-title">Sweet spot quantity</div><div class="insight-val">${(() => { let bestI=0,bestP=-Infinity; qtyProfitBySize.forEach((p,i)=>{ if(p>bestP && qtyDist[i]>5){bestP=p;bestI=i;} }); return qtyBinLabels[bestI]+' ticket(s)'; })()}</div><div class="insight-desc">${(() => { let bestI=0,bestP=-Infinity; qtyProfitBySize.forEach((p,i)=>{ if(p>bestP && qtyDist[i]>5){bestP=p;bestI=i;} }); return fmt$(bestP)+' avg profit/sale &middot; '+qtyDist[bestI]+' sales'; })()}</div></div>
+  </div>`;
+
+
+  html += `<div class="section">Sales Calendar</div>`;
+  html += `<div class="cal-wrap" id="calWrap"><div id="calContainer"></div></div>`;
+
+  // --- Top 10 Sales ---
+  html += `<div class="section">Top 10 Sales</div>`;
+  html += `<div class="top10-wrap">`;
+  html += `<div class="top10-tabs">`;
+  html += `<div class="top10-tab-group"><button class="top10-tab active" data-t10metric="profit" id="t10Profit">Profit</button><button class="top10-tab" data-t10metric="revenue" id="t10Revenue">Revenue</button></div>`;
+  html += `<div class="top10-tab-group"><button class="top10-tab active-green" data-t10dir="plus" id="t10Plus">+</button><button class="top10-tab" data-t10dir="minus" id="t10Minus">&minus;</button></div>`;
+  html += `</div>`;
+  html += `<div class="table-wrap"><table class="data" id="top10Table"><thead><tr><th>#</th><th>Date</th><th>Event</th><th>Qty</th><th>Cost</th><th>Sale</th><th>Profit</th><th>Platform</th></tr></thead><tbody id="top10Body"></tbody></table></div>`;
+  html += `</div>`;
 
   html += `<div class="section">Top 3 best days <span class="section-badge" style="color:var(--green);">by profit</span></div>`;
   bestDays.forEach((day, i) => {
@@ -669,18 +751,6 @@ function analyzeSales(rows, fileName) {
       <div class="day-card-meta">${day.txns} sale${day.txns>1?'s':''} &middot; ${day.tickets} ticket${day.tickets>1?'s':''} &middot; <span class="${day.profit>=0?'pos':'neg'}">${fmt$(day.profit)} profit</span> &middot; ${dayRoi}% ROI &middot; ${day.wins}W/${day.losses}L</div>
       <div class="day-card-events">Events: ${day.events.map(e => artistLink(e, 35)).join(', ')}</div></div>`;
   }
-
-  html += `<div class="section">Key insights</div>`;
-  html += `<div class="insight-grid">
-    <div class="insight"><div class="insight-title">Best month</div><div class="insight-val pos">${bestMonth.month}</div><div class="insight-desc">${fmt$(bestMonth.profit)} profit (${bestMonth.roi.toFixed(0)}% ROI) &middot; ${bestMonth.tickets} tickets</div></div>
-    <div class="insight"><div class="insight-title">Worst month</div><div class="insight-val neg">${worstMonth.month}</div><div class="insight-desc">${fmt$(worstMonth.profit)} profit &middot; ${worstMonth.tickets} tickets</div></div>
-    <div class="insight"><div class="insight-title">Best selling day</div><div class="insight-val">${bestDow.name}</div><div class="insight-desc">${fmt$(bestDow.profit)} from ${bestDow.txns} sales (${bestDow.tickets} tickets)</div></div>
-    <div class="insight"><div class="insight-title">Top ROI event</div><div class="insight-val pos">${(() => { const e = events.filter(e=>e.cost>500).sort((a,b)=>(b.profit/b.cost)-(a.profit/a.cost))[0]; return e ? artistLink(e.name,28) : 'N/A'; })()}</div><div class="insight-desc">${(() => { const e = events.filter(e=>e.cost>500).sort((a,b)=>(b.profit/b.cost)-(a.profit/a.cost))[0]; return e ? (e.profit/e.cost*100).toFixed(0)+'% ROI &middot; '+e.tickets+' tickets' : ''; })()}</div></div>
-    <div class="insight"><div class="insight-title">Most sold event</div><div class="insight-val">${topByQty[0] ? artistLink(topByQty[0].name,28) : 'N/A'}</div><div class="insight-desc">${topByQty[0]?.tickets||0} tickets across ${topByQty[0]?.txns||0} sales &middot; ${fmt$(topByQty[0]?.profit||0)} profit</div></div>
-    <div class="insight"><div class="insight-title">Worst loss event</div><div class="insight-val neg">${worstEvents[0] ? artistLink(worstEvents[0].name,28) : 'None'}</div><div class="insight-desc">${worstEvents[0] ? fmt$(worstEvents[0].profit)+' lost across '+worstEvents[0].tickets+' tickets' : 'No losing events!'}</div></div>
-    <div class="insight"><div class="insight-title">Biggest loss platform</div><div class="insight-val neg">${lossByPlatform[0]?.name||'None'}</div><div class="insight-desc">${lossByPlatform[0] ? fmt$(lossByPlatform[0].totalLoss)+' from '+lossByPlatform[0].lossCount+' of '+lossByPlatform[0].txns+' sales' : 'No losses!'}</div></div>
-    <div class="insight"><div class="insight-title">Sweet spot quantity</div><div class="insight-val">${(() => { let bestI=0,bestP=-Infinity; qtyProfitBySize.forEach((p,i)=>{ if(p>bestP && qtyDist[i]>5){bestP=p;bestI=i;} }); return qtyBinLabels[bestI]+' ticket(s)'; })()}</div><div class="insight-desc">${(() => { let bestI=0,bestP=-Infinity; qtyProfitBySize.forEach((p,i)=>{ if(p>bestP && qtyDist[i]>5){bestP=p;bestI=i;} }); return fmt$(bestP)+' avg profit/sale &middot; '+qtyDist[bestI]+' sales'; })()}</div></div>
-  </div>`;
 
   html += `<div class="section">Artist / Event Drill-Down</div>`;
   html += `<div class="artist-select-wrap">
@@ -769,8 +839,6 @@ function analyzeSales(rows, fileName) {
   });
   html += `</div></div>`;
 
-  html += `<div class="section">Sales Calendar</div>`;
-  html += `<div class="cal-wrap" id="calWrap"><div id="calContainer"></div></div>`;
 
   html += `<div class="footer">Ticket Resale Analytics &middot; Sales Mode &middot; ${totalTxns.toLocaleString()} rows &middot; ${totalTickets.toLocaleString()} tickets &middot; ${new Date().toLocaleDateString()}</div>`;
   renderDashboard(html);
@@ -808,7 +876,11 @@ function analyzeSales(rows, fileName) {
       let h = '';
       // Controls
       h += '<div class="cal-controls">';
-      if(calView === 'months') {
+      if(calView === 'years') {
+        h += '<div class="cal-year-nav">';
+        h += '<span class="cal-year-label" id="calLabel">All Years</span>';
+        h += '</div>';
+      } else if(calView === 'months') {
         h += '<div class="cal-year-nav">';
         h += '<button class="cal-nav-btn" id="calPrev">&#9664;</button>';
         h += '<span class="cal-year-label" id="calLabel">' + calYearView + '</span>';
@@ -826,6 +898,7 @@ function analyzeSales(rows, fileName) {
       h += '<button class="cal-toggle' + (calView==='days'?' active':'') + '" data-view="days">Days</button>';
       h += '<button class="cal-toggle' + (calView==='weeks'?' active':'') + '" data-view="weeks">Weeks</button>';
       h += '<button class="cal-toggle' + (calView==='months'?' active':'') + '" data-view="months">Months</button>';
+      h += '<button class="cal-toggle' + (calView==='years'?' active':'') + '" data-view="years">Years</button>';
       h += '</div>';
       h += '<div class="cal-toggle-group">';
       h += '<button class="cal-toggle' + (calMetric==='pnl'?' active':'') + '" data-metric="pnl">P/L</button>';
@@ -833,7 +906,9 @@ function analyzeSales(rows, fileName) {
       h += '</div>';
       h += '</div></div>';
 
-      if(calView === 'months') {
+      if(calView === 'years') {
+        h += renderYearsView();
+      } else if(calView === 'months') {
         h += renderMonthsView();
       } else {
         h += renderCalendarGrid();
@@ -960,16 +1035,61 @@ function analyzeSales(rows, fileName) {
       return h;
     }
 
+    function renderYearsView() {
+      const allYears = [...new Set(Object.keys(dayMap).map(k => parseInt(k.split('-')[0])))].sort();
+      let h = '<div class="cal-year-grid">';
+      allYears.forEach(year => {
+        let yTotal = 0, yTxns = 0, yTix = 0, hasData = false;
+        for(let m = 0; m < 12; m++) {
+          const dInM = new Date(year, m + 1, 0).getDate();
+          for(let d = 1; d <= dInM; d++) {
+            const key = dateKey(year, m, d);
+            const data = dayMap[key];
+            if(data) {
+              yTotal += calMetric === 'pnl' ? data.profit : data.revenue;
+              yTxns += data.txns;
+              yTix += data.tickets;
+              hasData = true;
+            }
+          }
+        }
+        const cls = hasData ? monthCellClass(yTotal) : 'cal-cell-zero';
+        h += '<div class="cal-year-cell ' + cls + '" data-year="' + year + '">';
+        h += '<div class="cal-year-cell-name">' + year + '</div>';
+        if(hasData) {
+          h += '<div class="cal-year-cell-val">' + fmtVal(yTotal) + '</div>';
+          h += '<div class="cal-year-cell-sub">' + yTxns + ' sales &middot; ' + yTix + ' tix</div>';
+        } else {
+          h += '<div class="cal-year-cell-val" style="color:var(--hint);">--</div>';
+        }
+        h += '</div>';
+      });
+      h += '</div>';
+      return h;
+    }
+
     function bindEvents() {
-      document.getElementById('calPrev').addEventListener('click', () => {
+      const prevEl = document.getElementById('calPrev');
+      const nextEl = document.getElementById('calNext');
+      if(prevEl) prevEl.addEventListener('click', () => {
         if(calView === 'months') { calYearView--; }
         else { calMonth--; if(calMonth < 0) { calMonth = 11; calYear--; } }
         render();
       });
-      document.getElementById('calNext').addEventListener('click', () => {
+      if(nextEl) nextEl.addEventListener('click', () => {
         if(calView === 'months') { calYearView++; }
         else { calMonth++; if(calMonth > 11) { calMonth = 0; calYear++; } }
         render();
+      });
+      container.querySelectorAll('.cal-year-cell[data-year]').forEach(cell => {
+        cell.addEventListener('click', () => {
+          const yr = parseInt(cell.dataset.year);
+          calYearView = yr;
+          calYear = yr;
+          calMonth = 0;
+          calView = 'months';
+          render();
+        });
       });
       container.querySelectorAll('[data-view]').forEach(btn => {
         btn.addEventListener('click', () => { calView = btn.dataset.view; render(); });
@@ -980,6 +1100,69 @@ function analyzeSales(rows, fileName) {
     }
 
     render();
+  })();
+
+  // --- Top 10 Sales interactivity ---
+  (function() {
+    const body = document.getElementById('top10Body');
+    if(!body) return;
+    let t10Metric = 'profit';
+    let t10Dir = 'plus';
+
+    const datasets = {
+      'profit_plus': top10ProfitPlus,
+      'profit_minus': top10ProfitMinus,
+      'revenue_plus': top10RevPlus,
+      'revenue_minus': top10RevMinus
+    };
+
+    function renderTop10() {
+      const key = t10Metric + '_' + t10Dir;
+      const data = datasets[key];
+      let h = '';
+      data.forEach((r, i) => {
+        const d = r._invoiceDate ? r._invoiceDate.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '?';
+        const evName = r['Event Name'] || '';
+        h += '<tr>';
+        h += '<td style="font-weight:600;color:var(--muted);">' + (i+1) + '</td>';
+        h += '<td>' + d + '</td>';
+        h += '<td>' + artistLink(evName, 35) + '</td>';
+        h += '<td>' + r._qty + '</td>';
+        h += '<td>' + fmt$(r._totalCost) + '</td>';
+        h += '<td' + (t10Metric==='revenue'?' style="font-weight:700;"':'') + '>' + fmt$(r._totalSale) + '</td>';
+        h += '<td class="' + (r._totalProfit>=0?'pos':'neg') + '"' + (t10Metric==='profit'?' style="font-weight:700;"':'') + '>' + fmt$(r._totalProfit) + '</td>';
+        h += '<td>' + (r['Customer'] || '') + '</td>';
+        h += '</tr>';
+      });
+      body.innerHTML = h;
+    }
+
+    document.getElementById('t10Profit').addEventListener('click', function() {
+      t10Metric = 'profit';
+      this.classList.add('active');
+      document.getElementById('t10Revenue').classList.remove('active');
+      renderTop10();
+    });
+    document.getElementById('t10Revenue').addEventListener('click', function() {
+      t10Metric = 'revenue';
+      this.classList.add('active');
+      document.getElementById('t10Profit').classList.remove('active');
+      renderTop10();
+    });
+    document.getElementById('t10Plus').addEventListener('click', function() {
+      t10Dir = 'plus';
+      this.className = 'top10-tab active-green';
+      document.getElementById('t10Minus').className = 'top10-tab';
+      renderTop10();
+    });
+    document.getElementById('t10Minus').addEventListener('click', function() {
+      t10Dir = 'minus';
+      this.className = 'top10-tab active-red';
+      document.getElementById('t10Plus').className = 'top10-tab';
+      renderTop10();
+    });
+
+    renderTop10();
   })();
 
   const pieOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{color:c.text,font:{size:11},padding:10,usePointStyle:true,pointStyle:'circle'}},tooltip:{callbacks:{label:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return ctx.label+': '+fmt$(ctx.raw)+' ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}},cutout:'40%'};
